@@ -855,8 +855,6 @@ function toast(msg) {
 // ══════════════════════════════════════════════════════════
 //  VEICOLI
 // ══════════════════════════════════════════════════════════
-const VEH_TYPES = ['Camion','Furgone','Auto','Minibus','altro'];
-
 function renderVehicles() {
   document.getElementById('veh-list').innerHTML = vehicles.map(v => `
     <div class="panel-row">
@@ -866,38 +864,57 @@ function renderVehicles() {
         <div style="font-size:11px;color:var(--text2)">${v.type} · ${v.plate}</div>
       </div>
       ${isAdmin() ? `
-        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editVehicle(${v.id})">✏️</span>
+        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openVehicleModal(${v.id})">✏️</span>
         <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteVehicle(${v.id})">🗑️</span>
       ` : ''}
     </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun veicolo</div>';
 }
 
-async function addVehicleModal() {
-  const name  = prompt('Nome veicolo (es. Scania 450):');
-  if (!name || !name.trim()) return;
-  const type  = prompt('Tipo (Camion / Furgone / Auto / Minibus):') || 'Furgone';
-  const plate = prompt('Targa:');
-  if (!plate || !plate.trim()) return;
-  const { data, error } = await sb.from('vehicles').insert({ name: name.trim(), type: type.trim(), plate: plate.trim().toUpperCase(), active: true }).select().single();
-  if (error) { toast('Errore o targa già presente'); return; }
-  vehicles.push(data);
-  renderVehicles();
-  toast('Veicolo aggiunto');
+function addVehicleModal() { openVehicleModal(null); }
+
+function openVehicleModal(id) {
+  const v = id ? vehicles.find(x => x.id === id) : null;
+  const typeOpts = ['Camion','Furgone','Auto','Minibus','Altro'].map(t =>
+    `<option value="${t}" ${v && v.type === t ? 'selected' : ''}>${t}</option>`).join('');
+  showModal(`
+    <h2>${v ? 'Modifica veicolo' : 'Nuovo veicolo'}</h2>
+    <div class="field"><label>Nome</label>
+      <input id="fv-name" value="${v ? v.name : ''}" placeholder="es. Scania 450">
+    </div>
+    <div class="frow">
+      <div class="field"><label>Tipo</label>
+        <select id="fv-type">${typeOpts}</select>
+      </div>
+      <div class="field"><label>Targa</label>
+        <input id="fv-plate" value="${v ? v.plate : ''}" placeholder="es. AB123CD" style="text-transform:uppercase">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveVehicle(${id || 'null'})">Salva</button>
+    </div>`);
 }
 
-async function editVehicle(id) {
-  const v = vehicles.find(x => x.id === id);
-  if (!v) return;
-  const name  = prompt('Nome veicolo:', v.name);
-  if (!name || !name.trim()) return;
-  const type  = prompt('Tipo:', v.type);
-  const plate = prompt('Targa:', v.plate);
-  if (!plate || !plate.trim()) return;
-  const { error } = await sb.from('vehicles').update({ name: name.trim(), type: (type||v.type).trim(), plate: plate.trim().toUpperCase() }).eq('id', id);
-  if (error) { toast('Errore modifica'); return; }
-  Object.assign(v, { name: name.trim(), type: (type||v.type).trim(), plate: plate.trim().toUpperCase() });
+async function saveVehicle(id) {
+  const name  = document.getElementById('fv-name').value.trim();
+  const type  = document.getElementById('fv-type').value;
+  const plate = document.getElementById('fv-plate').value.trim().toUpperCase();
+  if (!name) { toast('Inserisci il nome del veicolo'); return; }
+  if (!plate) { toast('Inserisci la targa'); return; }
+
+  if (id) {
+    const { error } = await sb.from('vehicles').update({ name, type, plate }).eq('id', id);
+    if (error) { toast('Errore modifica'); return; }
+    Object.assign(vehicles.find(x => x.id === id), { name, type, plate });
+    toast('Veicolo aggiornato');
+  } else {
+    const { data, error } = await sb.from('vehicles').insert({ name, type, plate, active: true }).select().single();
+    if (error) { toast('Errore: targa già presente o dati non validi'); return; }
+    vehicles.push(data);
+    toast('Veicolo aggiunto');
+  }
+  closeModal();
   renderVehicles();
-  toast('Veicolo aggiornato');
 }
 
 async function deleteVehicle(id) {
