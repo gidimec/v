@@ -178,6 +178,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       <div class="sb-icon"        title="Destinazioni" onclick="switchView('addr')">📍</div>
       <div class="sb-icon"        title="Autisti"      onclick="switchView('drv')">👤</div>
       <div class="sb-icon"        title="Veicoli"      onclick="switchView('veh')">🚛</div>
+      <div class="sb-icon"        title="Utenti"       onclick="switchView('usr')">🔑</div>
       <div class="sb-icon"        title="Log"          onclick="switchView('log')">📋</div>
     </div>
 
@@ -214,6 +215,15 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
         <button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="addVehicleModal()">+ Aggiungi</button>
       </div>
       <div id="veh-list"></div>
+    </div>
+
+    <!-- UTENTI (solo admin) -->
+    <div id="view-usr" class="panel" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0">Gestione accessi</h3>
+        <button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="openUserModal(null)">+ Nuovo utente</button>
+      </div>
+      <div id="usr-list"></div>
     </div>
 
     <!-- LOG -->
@@ -347,7 +357,7 @@ async function onLogin(user) {
 
 function updateUIForRole() {
   // log solo per admin
-  const logIcon = document.querySelectorAll('.sb-icon')[4];
+  const logIcon = document.querySelectorAll('.sb-icon')[5];
   if (logIcon) logIcon.style.display = isAdmin() ? 'flex' : 'none';
 }
 
@@ -705,15 +715,16 @@ async function deleteTrip(id) {
 //  PANNELLI LATERALI
 // ══════════════════════════════════════════════════════════
 function switchView(v) {
-  if (v === 'log' && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
-  ['cal','addr','drv','veh','log'].forEach(x => {
+  if ((v === 'log' || v === 'usr') && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
+  ['cal','addr','drv','veh','usr','log'].forEach(x => {
     const el = document.getElementById('view-' + x);
     el.style.display = x === v ? (x === 'cal' ? 'flex' : 'block') : 'none';
   });
-  document.querySelectorAll('.sb-icon').forEach((el, i) => el.classList.toggle('active', ['cal','addr','drv','veh','log'][i] === v));
+  document.querySelectorAll('.sb-icon').forEach((el, i) => el.classList.toggle('active', ['cal','addr','drv','veh','usr','log'][i] === v));
   if (v === 'addr') renderDests();
   if (v === 'drv')  renderDrivers();
   if (v === 'veh')  renderVehicles();
+  if (v === 'usr')  renderUsers();
   if (v === 'log')  renderLog();
 }
 
@@ -928,9 +939,104 @@ async function deleteVehicle(id) {
 }
 
 // ══════════════════════════════════════════════════════════
-//  START
+//  CONFERMA ELEGANTE (sostituisce confirm())
 // ══════════════════════════════════════════════════════════
-init();
+function confirmAction(msg, onConfirm) {
+  showModal(`
+    <h2>Conferma</h2>
+    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">${msg}</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn danger" onclick="closeModal();(${onConfirm})()">Elimina</button>
+    </div>`);
+}
+
+// ══════════════════════════════════════════════════════════
+//  GESTIONE UTENTI (solo admin)
+// ══════════════════════════════════════════════════════════
+let usersList = [];
+
+async function renderUsers() {
+  document.getElementById('usr-list').innerHTML = '<div style="color:var(--text3);font-size:12px">Caricamento…</div>';
+  const { data } = await sb.from('user_roles').select('*').order('name');
+  usersList = data || [];
+  const roleLabel = { admin: 'Amministratore', operatore: 'Operatore', viewer: 'Visualizzatore' };
+  const roleClass = { admin: 'role-admin', operatore: 'role-operatore', viewer: 'role-viewer' };
+  document.getElementById('usr-list').innerHTML = usersList.map(u => `
+    <div class="panel-row">
+      <div style="flex:1">
+        <div style="font-weight:500">${u.name}</div>
+        <div style="font-size:11px;color:var(--text2)">${u.email}</div>
+      </div>
+      <span class="role-badge ${roleClass[u.role]}" style="margin-right:8px">${roleLabel[u.role]}</span>
+      <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openUserModal('${u.email}')">✏️</span>
+      <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="confirmDeleteUser('${u.email}','${u.name}')">🗑️</span>
+    </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun utente</div>';
+}
+
+function openUserModal(email) {
+  const u = email ? usersList.find(x => x.email === email) : null;
+  const roleOpts = ['admin','operatore','viewer'].map(r => {
+    const labels = { admin:'Amministratore', operatore:'Operatore', viewer:'Visualizzatore' };
+    return `<option value="${r}" ${u && u.role === r ? 'selected' : ''}>${labels[r]}</option>`;
+  }).join('');
+  showModal(`
+    <h2>${u ? 'Modifica utente' : 'Nuovo utente'}</h2>
+    ${!u ? '<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">⚠️ Crea prima l\'utente su Supabase → Authentication → Add user, poi aggiungilo qui.</div>' : ''}
+    <div class="field"><label>Nome</label>
+      <input id="fu-name" value="${u ? u.name : ''}" placeholder="es. Marco Rossi">
+    </div>
+    <div class="field"><label>Email</label>
+      <input id="fu-email" value="${u ? u.email : ''}" placeholder="email@esempio.com" ${u ? 'readonly style="opacity:.6"' : ''}>
+    </div>
+    <div class="field"><label>Ruolo</label>
+      <select id="fu-role">${roleOpts}</select>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveUser('${email || ''}')">Salva</button>
+    </div>`);
+}
+
+async function saveUser(existingEmail) {
+  const name  = document.getElementById('fu-name').value.trim();
+  const email = existingEmail || document.getElementById('fu-email').value.trim().toLowerCase();
+  const role  = document.getElementById('fu-role').value;
+  if (!name) { toast('Inserisci il nome'); return; }
+  if (!email) { toast('Inserisci la email'); return; }
+
+  if (existingEmail) {
+    // aggiorna ruolo esistente
+    const { error } = await sb.from('user_roles').update({ name, role }).eq('email', email);
+    if (error) { toast('Errore aggiornamento'); return; }
+    toast('Utente aggiornato');
+  } else {
+    // inserisci nuovo
+    const { error } = await sb.from('user_roles').insert({ email, name, role });
+    if (error) { toast('Errore: email già presente o non valida'); return; }
+    toast('Utente aggiunto');
+  }
+  closeModal();
+  renderUsers();
+}
+
+function confirmDeleteUser(email, name) {
+  showModal(`
+    <h2>Conferma eliminazione</h2>
+    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare l'accesso di <strong>${name}</strong> (${email})?<br>L'utente non potrà più accedere al sito.</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn danger" onclick="deleteUser('${email}')">Elimina accesso</button>
+    </div>`);
+}
+
+async function deleteUser(email) {
+  const { error } = await sb.from('user_roles').delete().eq('email', email);
+  if (error) { toast('Errore eliminazione'); return; }
+  closeModal();
+  renderUsers();
+  toast('Accesso rimosso');
+}
 </script>
 </body>
 </html>
