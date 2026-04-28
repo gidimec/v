@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Viaggi Autisti</title>
+
+<!-- ══════════════════════════════════════════════════════════
+  CONFIGURAZIONE  ← modifica solo questi due valori
+══════════════════════════════════════════════════════════ -->
+<script>
+  const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fff;--bg2:#f7f7f5;--bg3:#f0efe9;
+  --text:#1a1a1a;--text2:#666;--text3:#999;
+  --border:rgba(0,0,0,.12);--border2:rgba(0,0,0,.22);
+  --blue:#378ADD;--blue-bg:#e6f1fb;
+  --radius:8px;--radius-lg:12px;
+  --slot-h:28px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;
+  --text:#f5f5f5;--text2:#aaa;--text3:#666;
+  --border:rgba(255,255,255,.12);--border2:rgba(255,255,255,.22);
+  --blue-bg:#0c2d4a;
+}}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:var(--bg);color:var(--text);user-select:none}
+.app{display:flex;height:100dvh;flex-direction:column}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:10}
+.topbar h1{font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px}
+.week-nav{display:flex;align-items:center;gap:6px;margin-left:12px}
+.week-nav button{border:0.5px solid var(--border2);background:transparent;border-radius:var(--radius);padding:4px 10px;cursor:pointer;font-size:12px;color:var(--text)}
+.week-nav span{font-size:12px;color:var(--text2);font-weight:500;min-width:120px;text-align:center}
+.legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+.leg-dot{width:10px;height:10px;border-radius:50%}
+
+/* ── USER BUTTON ── */
+.user-btn{display:flex;align-items:center;gap:6px;padding:5px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;cursor:pointer;background:transparent;color:var(--text)}
+.user-btn:hover{background:var(--bg2)}
+
+/* ── LOGIN SCREEN ── */
+.login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
+.login-card{background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:32px;width:340px;max-width:100%;box-shadow:0 8px 32px rgba(0,0,0,.12)}
+.login-card h2{font-size:20px;font-weight:600;margin-bottom:4px}
+.login-card p{font-size:13px;color:var(--text2);margin-bottom:24px}
+.role-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500;margin-left:6px}
+.role-admin{background:#e1f5ee;color:#085041}
+.role-operatore{background:#faece7;color:#4a1b0c}
+.role-viewer{background:#eeedfe;color:#26215c}
+
+/* ── LAYOUT ── */
+.main{display:flex;flex:1;overflow:hidden}
+.sidebar{width:52px;background:var(--bg2);border-right:0.5px solid var(--border);display:flex;flex-direction:column;padding:8px 4px;gap:4px;align-items:center;flex-shrink:0}
+.sb-icon{width:36px;height:36px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;border:0.5px solid transparent;color:var(--text2);transition:all .15s}
+.sb-icon:hover,.sb-icon.active{background:var(--bg);border-color:var(--border2);color:var(--text)}
+
+/* ── CALENDAR ── */
+.cal-wrap{flex:1;overflow:auto}
+.cal{display:grid;grid-template-columns:52px repeat(6,1fr);min-width:580px}
+.ch-empty{border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
+.ch-day{padding:7px 4px;text-align:center;border-bottom:0.5px solid var(--border2);border-left:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
+.ch-day .dow{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.ch-day .dom{font-size:18px;font-weight:500;line-height:1.3}
+.ch-day.today .dom{background:var(--blue);color:#fff;border-radius:50%;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center}
+.time-cell{padding:0 6px;text-align:right;font-size:10px;color:var(--text3);border-right:0.5px solid var(--border2);border-bottom:0.5px solid var(--border);height:var(--slot-h);line-height:var(--slot-h);background:var(--bg);position:sticky;left:0;z-index:2}
+.time-cell.hour{color:var(--text2);border-bottom-color:var(--border2)}
+.slot-row{height:var(--slot-h);border-bottom:0.5px solid var(--border);border-left:0.5px solid var(--border2);position:relative;transition:background .08s}
+.slot-row.hour-top{border-bottom-color:var(--border2)}
+.slot-row:hover{background:rgba(55,138,221,.06)}
+.slot-row.selecting{background:rgba(55,138,221,.13)}
+.slot-row.sel-top{border-top:2px solid var(--blue)}
+.slot-row.sel-bot{border-bottom:2px solid var(--blue)!important}
+.slot-row.drop-target{background:rgba(55,138,221,.2)}
+
+/* ── TRIP BLOCKS ── */
+.trip-block{position:absolute;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:500;cursor:grab;overflow:hidden;border-left:3px solid transparent;line-height:1.3;z-index:1;transition:box-shadow .1s,opacity .1s}
+.trip-block:hover{box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.trip-block.dragging{opacity:.35;cursor:grabbing}
+.trip-ghost{position:fixed;pointer-events:none;border-radius:4px;padding:3px 6px;font-size:10px;font-weight:500;z-index:9999;border-left:3px solid transparent;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.25);min-width:90px}
+
+/* ── HINT BAR ── */
+.hint-bar{padding:5px 16px;font-size:11px;color:var(--text3);border-top:0.5px solid var(--border);background:var(--bg);text-align:center;flex-shrink:0}
+
+/* ── PANELS ── */
+.panel{flex:1;overflow:auto;padding:16px}
+.panel h3{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
+.panel-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:9px 12px;border:0.5px solid var(--border);border-radius:var(--radius);font-size:13px}
+.panel-row:hover{background:var(--bg2);cursor:pointer}
+.dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.tag{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:500;background:var(--blue-bg);color:var(--blue)}
+.log-row{padding:8px 0;border-bottom:0.5px solid var(--border);font-size:12px;line-height:1.5}
+.log-ts{color:var(--text3)}
+
+/* ── MODAL ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
+.modal{background:var(--bg);border-radius:var(--radius-lg);border:0.5px solid var(--border2);width:360px;max-width:100%;padding:20px;max-height:90dvh;overflow-y:auto}
+.modal h2{font-size:15px;font-weight:600;margin-bottom:6px}
+.modal-sub{font-size:12px;color:var(--text2);background:var(--bg2);border-radius:var(--radius);padding:5px 10px;margin-bottom:16px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:7px 10px;font-size:13px;background:var(--bg2);color:var(--text);outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue)}
+.field textarea{resize:vertical;min-height:56px}
+.frow{display:flex;gap:8px}
+.frow .field{flex:1}
+.btn-row{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+.btn{border:0.5px solid var(--border2);background:transparent;border-radius:var(--radius);padding:7px 16px;cursor:pointer;font-size:13px;color:var(--text);transition:background .1s}
+.btn:hover{background:var(--bg2)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:500}
+.btn.primary:hover{opacity:.9}
+.btn.danger{color:#E24B4A;border-color:#E24B4A}
+.btn.danger:hover{background:#fcebeb}
+
+/* ── CONTEXT MENU ── */
+.ctx{position:fixed;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);padding:4px;z-index:800;min-width:180px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+.ctx-label{padding:4px 12px 7px;font-size:11px;color:var(--text2);border-bottom:0.5px solid var(--border);margin-bottom:4px}
+.ctx-item{padding:7px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+.ctx-item:hover{background:var(--bg2)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 18px;border-radius:var(--radius);font-size:13px;z-index:9999;pointer-events:none;transition:opacity .2s}
+
+/* ── LOADER ── */
+.loader{display:flex;align-items:center;justify-content:center;flex:1;color:var(--text2);font-size:13px;gap:8px}
+.spinner{width:18px;height:18px;border:2px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <h2>🚌 Viaggi Autisti</h2>
+    <p>Accedi per visualizzare il calendario</p>
+    <div class="field"><label>Email</label><input id="ls-email" type="email" placeholder="email@esempio.it" onkeydown="if(event.key==='Enter')doLoginScreen()"></div>
+    <div class="field"><label>Password</label><input id="ls-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLoginScreen()"></div>
+    <div id="ls-err" style="color:#E24B4A;font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
+    <button class="btn primary" style="width:100%;padding:10px" onclick="doLoginScreen()">Accedi</button>
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">Contatta l'amministratore per ottenere le credenziali</div>
+  </div>
+</div>
+
+<div class="app" id="main-app" style="display:none">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:4px">
+      <div style="font-size:15px;font-weight:600">🚌 Viaggi Autisti</div>
+      <div class="week-nav">
+        <button onclick="prevWeek()">‹</button>
+        <span id="week-label">…</span>
+        <button onclick="nextWeek()">›</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="legend" id="legend"></div>
+      <button class="user-btn" onclick="handleUserBtn()">
+        <span>👤</span><span id="user-label">Accedi</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sb-icon active" title="Calendario"   onclick="switchView('cal')">📅</div>
+      <div class="sb-icon"        title="Destinazioni" onclick="switchView('addr')">📍</div>
+      <div class="sb-icon"        title="Autisti"      onclick="switchView('drv')">👤</div>
+      <div class="sb-icon"        title="Log"          onclick="switchView('log')">📋</div>
+    </div>
+
+    <!-- CALENDARIO -->
+    <div id="view-cal" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <div class="cal-wrap" id="cal-wrap">
+        <div class="cal" id="cal-grid"></div>
+      </div>
+      <div class="hint-bar">Trascina per selezionare fascia · Tasto destro per opzioni · Trascina un viaggio per spostarlo</div>
+    </div>
+
+    <!-- DESTINAZIONI -->
+    <div id="view-addr" class="panel" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0">Destinazioni</h3>
+        <button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="addDestModal()">+ Aggiungi</button>
+      </div>
+      <input type="text" id="dest-search" placeholder="Cerca…"
+        style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:7px 10px;font-size:13px;background:var(--bg2);color:var(--text);margin-bottom:12px"
+        oninput="renderDests()">
+      <div id="dest-list"></div>
+    </div>
+
+    <!-- AUTISTI -->
+    <div id="view-drv" class="panel" style="display:none">
+      <h3>Autisti</h3>
+      <div id="drv-list"></div>
+    </div>
+
+    <!-- LOG -->
+    <div id="view-log" class="panel" style="display:none">
+      <h3>Log attività</h3>
+      <div id="log-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+</div><!-- /main-app -->
+
+<div id="ctx" class="ctx" style="display:none"></div>
+<div id="modal-area"></div>
+<div id="ghost" class="trip-ghost" style="display:none"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  INIT SUPABASE
+// ══════════════════════════════════════════════════════════
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ══════════════════════════════════════════════════════════
+//  STATO GLOBALE
+// ══════════════════════════════════════════════════════════
+let drivers = [];
+let dests   = [];
+let trips   = [];
+let logs    = [];
+let currentUser = null;
+let weekOffset  = 0;
+
+// drag-select nuovi viaggi
+let selDrag = null;
+// drag-move viaggio esistente
+let tripDrag = null;
+
+const DAYS      = ['Lun','Mar','Mer','Gio','Ven','Sab'];
+const DAYS_FULL = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+const START_H   = 6;
+const END_H     = 22;
+const SLOTS     = (END_H - START_H) * 2;
+const SLOT_H    = 28;
+
+function canEdit() { return currentUser && (currentUser.role === 'admin' || currentUser.role === 'operatore'); }
+function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+
+// ══════════════════════════════════════════════════════════
+//  LOGIN SCREEN (obbligatorio per tutti)
+// ══════════════════════════════════════════════════════════
+async function doLoginScreen() {
+  const email = document.getElementById('ls-email').value.trim();
+  const pass  = document.getElementById('ls-pass').value;
+  const errEl = document.getElementById('ls-err');
+  errEl.textContent = '';
+  if (!email || !pass) { errEl.textContent = 'Inserisci email e password'; return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) { errEl.textContent = 'Email o password errati'; return; }
+  await onLogin(data.user);
+}
+
+function showLoginScreen() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'none';
+}
+function hideLoginScreen() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'flex';
+}
+
+// ══════════════════════════════════════════════════════════
+//  BOOTSTRAP
+// ══════════════════════════════════════════════════════════
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await onLogin(session.user);
+  } else {
+    showLoginScreen();
+  }
+
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    if (session) await onLogin(session.user);
+    else { currentUser = null; showLoginScreen(); }
+  });
+}
+
+async function loadAll() {
+  const [{ data: d }, { data: ds }, { data: t }, { data: l }] = await Promise.all([
+    sb.from('drivers').select('*').eq('active', true).order('id'),
+    sb.from('destinations').select('*').order('name'),
+    sb.from('trips').select('*').eq('week_offset', weekOffset).order('start_slot'),
+    sb.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
+  ]);
+  drivers = d || [];
+  dests   = (ds || []).map(x => x.name);
+  trips   = t || [];
+  logs    = l || [];
+}
+
+async function loadTrips() {
+  const { data } = await sb.from('trips').select('*').eq('week_offset', weekOffset).order('start_slot');
+  trips = data || [];
+}
+
+// ══════════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════════
+async function onLogin(user) {
+  const meta = user.user_metadata || {};
+  currentUser = { id: user.id, email: user.email, name: meta.name || user.email.split('@')[0], role: meta.role || 'viewer' };
+  document.getElementById('user-label').textContent = currentUser.name;
+  hideLoginScreen();
+  await loadAll();
+  renderLegend();
+  renderCal();
+  // mostra/nascondi sidebar voci admin
+  updateUIForRole();
+}
+
+function updateUIForRole() {
+  // log solo per admin
+  const logIcon = document.querySelectorAll('.sb-icon')[3];
+  if (logIcon) logIcon.style.display = isAdmin() ? 'flex' : 'none';
+}
+
+function handleUserBtn() {
+  showProfileModal();
+}
+
+function showProfileModal() {
+  const roleLabel = { admin: 'Amministratore', operatore: 'Operatore', viewer: 'Visualizzatore' };
+  const roleClass = { admin: 'role-admin', operatore: 'role-operatore', viewer: 'role-viewer' };
+  showModal(`
+    <h2>Profilo</h2>
+    <p style="margin-bottom:16px;color:var(--text2)">
+      Connesso come <strong>${currentUser.name}</strong>
+      <span class="role-badge ${roleClass[currentUser.role]}">${roleLabel[currentUser.role]}</span>
+    </p>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">${currentUser.email}</div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Chiudi</button>
+      <button class="btn danger" onclick="doLogout()">Esci</button>
+    </div>`);
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  currentUser = null;
+  closeModal();
+  showLoginScreen();
+}
+
+// ══════════════════════════════════════════════════════════
+//  CALENDARIO
+// ══════════════════════════════════════════════════════════
+function getWeekDates() {
+  const now = new Date();
+  now.setDate(now.getDate() - now.getDay() + 1 + weekOffset * 7);
+  return Array.from({ length: 6 }, (_, i) => { const d = new Date(now); d.setDate(now.getDate() + i); return d; });
+}
+function fmtDate(d) { return d.getDate() + '/' + (d.getMonth() + 1); }
+function isToday(d) { const t = new Date(); return d.toDateString() === t.toDateString(); }
+function slotToTime(s) { const h = START_H + Math.floor(s / 2); const m = s % 2 === 0 ? '00' : '30'; return `${h}:${m}`; }
+
+async function prevWeek() { weekOffset--; await loadTrips(); renderCal(); }
+async function nextWeek() { weekOffset++; await loadTrips(); renderCal(); }
+
+function renderLegend() {
+  document.getElementById('legend').innerHTML = drivers.map(d =>
+    `<div class="leg-item"><div class="leg-dot" style="background:${d.color}"></div>${d.name}</div>`).join('');
+}
+
+function renderCal() {
+  const dates = getWeekDates();
+  document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
+  const grid = document.getElementById('cal-grid');
+  let html = '<div class="ch-empty"></div>';
+  dates.forEach((d, i) => {
+    html += `<div class="${isToday(d) ? 'ch-day today' : 'ch-day'}"><div class="dow">${DAYS[i]}</div><div class="dom">${d.getDate()}</div></div>`;
+  });
+  for (let s = 0; s < SLOTS; s++) {
+    const isHour = s % 2 === 0;
+    html += `<div class="time-cell${isHour ? ' hour' : ''}">${isHour ? slotToTime(s) : ''}</div>`;
+    for (let d = 0; d < 6; d++) {
+      html += `<div class="slot-row${isHour ? ' hour-top' : ''}" id="sr-${d}-${s}" data-day="${d}" data-slot="${s}"></div>`;
+    }
+  }
+  grid.innerHTML = html;
+  grid.onmousedown    = onGridMouseDown;
+  grid.onmousemove    = onGridMouseMove;
+  grid.oncontextmenu  = onGridCtx;
+  renderTrips();
+}
+
+function renderTrips() {
+  document.querySelectorAll('.trip-block').forEach(e => e.remove());
+  for (let d = 0; d < 6; d++) {
+    const dayTrips = trips.filter(t => t.day === d);
+    dayTrips.forEach(t => {
+      const drv = drivers.find(dr => dr.id === t.driver_id);
+      if (!drv) return;
+      const concurrent = dayTrips.filter(t2 => t2.id !== t.id && t2.start_slot < t.start_slot + t.duration && t2.start_slot + t2.duration > t.start_slot);
+      const group = [t, ...concurrent].sort((a, b) => a.id - b.id);
+      const idx   = group.indexOf(t);
+      const total = group.length;
+      const cell  = document.getElementById(`sr-${d}-${t.start_slot}`);
+      if (!cell) return;
+      cell.style.position = 'relative';
+      const pct   = 100 / total;
+      const block = document.createElement('div');
+      block.className       = 'trip-block';
+      block.id              = `trip-${t.id}`;
+      block.dataset.tripId  = t.id;
+      block.style.cssText   = `top:1px;left:calc(${idx * pct}% + 1px);width:calc(${pct}% - 2px);height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left-color:${drv.color}`;
+      block.title           = `${drv.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}`;
+      block.innerHTML       = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${drv.name.split(' ')[0]}</div><div style="opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.dest}</div>`;
+      block.addEventListener('mousedown', e => { if (!canEdit()) return; e.stopPropagation(); startTripDrag(e, t.id); });
+      block.addEventListener('click',     e => { if (tripDrag && tripDrag.moved) return; e.stopPropagation(); showTripModal(t.id); });
+      cell.appendChild(block);
+    });
+  }
+  clearHighlight();
+}
+
+// ══════════════════════════════════════════════════════════
+//  DRAG & DROP VIAGGIO ESISTENTE
+// ══════════════════════════════════════════════════════════
+function startTripDrag(e, tripId) {
+  const t   = trips.find(x => x.id === tripId);
+  const drv = drivers.find(d => d.id === t.driver_id);
+  const block = document.getElementById(`trip-${tripId}`);
+  const rect  = block.getBoundingClientRect();
+  const offsetSlot = Math.floor((e.clientY - rect.top) / SLOT_H);
+  const ghost = document.getElementById('ghost');
+  ghost.style.cssText = `display:block;width:110px;height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left:3px solid ${drv.color};left:${e.clientX + 14}px;top:${e.clientY - 10}px`;
+  ghost.innerHTML = `<div style="font-size:10px;font-weight:500;padding:3px 6px">${drv.name.split(' ')[0]}<br><span style="opacity:.75">${t.dest}</span></div>`;
+  block.classList.add('dragging');
+  tripDrag = { tripId, offsetSlot, moved: false, origDay: t.day, origSlot: t.start_slot };
+  document.addEventListener('mousemove', onTripMove);
+  document.addEventListener('mouseup',   onTripUp);
+}
+
+function onTripMove(e) {
+  if (!tripDrag) return;
+  tripDrag.moved = true;
+  const ghost = document.getElementById('ghost');
+  ghost.style.left = (e.clientX + 14) + 'px';
+  ghost.style.top  = (e.clientY - 10) + 'px';
+  const target = getSlotAt(e.clientX, e.clientY);
+  clearDropTargets();
+  if (target) {
+    const t = trips.find(x => x.id === tripDrag.tripId);
+    const newSlot = Math.max(0, Math.min(SLOTS - t.duration, target.slot - tripDrag.offsetSlot));
+    for (let s = newSlot; s < newSlot + t.duration; s++) {
+      const el = document.getElementById(`sr-${target.day}-${s}`);
+      if (el) el.classList.add('drop-target');
+    }
+    tripDrag.targetDay  = target.day;
+    tripDrag.targetSlot = newSlot;
+  }
+}
+
+async function onTripUp(e) {
+  if (!tripDrag) return;
+  document.removeEventListener('mousemove', onTripMove);
+  document.removeEventListener('mouseup',   onTripUp);
+  document.getElementById('ghost').style.display = 'none';
+  const block = document.getElementById(`trip-${tripDrag.tripId}`);
+  if (block) block.classList.remove('dragging');
+  clearDropTargets();
+
+  if (tripDrag.moved && tripDrag.targetDay !== undefined) {
+    const t   = trips.find(x => x.id === tripDrag.tripId);
+    const drv = drivers.find(d => d.id === t.driver_id);
+    const oldInfo = `${DAYS[t.day]} ${slotToTime(t.start_slot)}`;
+    t.day        = tripDrag.targetDay;
+    t.start_slot = tripDrag.targetSlot;
+    renderTrips();
+    // salva su Supabase
+    const { error } = await sb.from('trips').update({ day: t.day, start_slot: t.start_slot }).eq('id', t.id);
+    if (error) { toast('Errore nel salvataggio'); }
+    else {
+      const action = `Spostato ${drv.name} → ${t.dest} (${oldInfo} → ${DAYS[t.day]} ${slotToTime(t.start_slot)})`;
+      await sb.from('activity_log').insert({ username: currentUser.name, action });
+      toast(`Spostato a ${DAYS_FULL[t.day]} ${slotToTime(t.start_slot)}`);
+    }
+  }
+  tripDrag = null;
+}
+
+function getSlotAt(x, y) {
+  for (const el of document.elementsFromPoint(x, y)) {
+    if (el.dataset && el.dataset.day !== undefined && el.dataset.slot !== undefined)
+      return { day: +el.dataset.day, slot: +el.dataset.slot };
+  }
+  return null;
+}
+function clearDropTargets() { document.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target')); }
+
+// ══════════════════════════════════════════════════════════
+//  DRAG-TO-SELECT (nuovo viaggio)
+// ══════════════════════════════════════════════════════════
+function onGridMouseDown(e) {
+  if (e.button !== 0) return;
+  const sr = e.target.closest('.slot-row');
+  if (!sr || e.target.closest('.trip-block')) return;
+  if (!canEdit()) return;
+  selDrag = { day: +sr.dataset.day, startSlot: +sr.dataset.slot, endSlot: +sr.dataset.slot, active: true };
+  highlightSel();
+}
+function onGridMouseMove(e) {
+  if (!selDrag || !selDrag.active) return;
+  const sr = e.target.closest('.slot-row');
+  if (!sr || +sr.dataset.day !== selDrag.day) return;
+  selDrag.endSlot = +sr.dataset.slot;
+  highlightSel();
+}
+function onGridCtx(e) {
+  e.preventDefault();
+  const sr = e.target.closest('.slot-row');
+  if (!sr) return;
+  if (!canEdit()) { toast('Non hai i permessi per inserire viaggi'); return; }
+  const day = +sr.dataset.day;
+  let lo = +sr.dataset.slot, dur = 1;
+  if (selDrag) { lo = Math.min(selDrag.startSlot, selDrag.endSlot); dur = Math.abs(selDrag.endSlot - selDrag.startSlot) + 1; selDrag = null; clearHighlight(); }
+  showCtxMenu(e.clientX, e.clientY, day, lo, dur);
+}
+document.addEventListener('mouseup', () => {
+  if (selDrag && selDrag.active) {
+    selDrag.active = false;
+    if (!canEdit()) { selDrag = null; clearHighlight(); return; }
+    const lo  = Math.min(selDrag.startSlot, selDrag.endSlot);
+    const dur = Math.abs(selDrag.endSlot - selDrag.startSlot) + 1;
+    const day = selDrag.day;
+    selDrag = null; clearHighlight();
+    openTripForm(null, day, lo, dur);
+  }
+});
+function highlightSel() {
+  clearHighlight();
+  if (!selDrag) return;
+  const lo = Math.min(selDrag.startSlot, selDrag.endSlot);
+  const hi = Math.max(selDrag.startSlot, selDrag.endSlot);
+  for (let s = lo; s <= hi; s++) {
+    const el = document.getElementById(`sr-${selDrag.day}-${s}`);
+    if (el) { el.classList.add('selecting'); if (s === lo) el.classList.add('sel-top'); if (s === hi) el.classList.add('sel-bot'); }
+  }
+}
+function clearHighlight() { document.querySelectorAll('.selecting,.sel-top,.sel-bot').forEach(e => e.classList.remove('selecting','sel-top','sel-bot')); }
+
+function showCtxMenu(x, y, day, slot, dur) {
+  const ctx = document.getElementById('ctx');
+  ctx.innerHTML = `<div class="ctx-label">${DAYS_FULL[day]} · ${slotToTime(slot)}${dur > 1 ? ' – ' + slotToTime(slot + dur) : ''}</div>
+    <div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur});hideCtx()">+ Inserisci viaggio</div>`;
+  ctx.style.display = 'block'; ctx.style.left = x + 'px'; ctx.style.top = y + 'px';
+  setTimeout(() => document.addEventListener('click', hideCtx, { once: true }), 0);
+}
+function hideCtx() { document.getElementById('ctx').style.display = 'none'; }
+
+// ══════════════════════════════════════════════════════════
+//  FORM VIAGGIO
+// ══════════════════════════════════════════════════════════
+function openTripForm(id, day, slot, dur) {
+  const t    = id ? trips.find(x => x.id === id) : null;
+  const sDay  = t ? t.day        : (day  || 0);
+  const sSlot = t ? t.start_slot : (slot || 0);
+  const sDur  = t ? t.duration   : (dur  || 2);
+  const durOpts = [1,2,3,4,6,8,10,12].map(n =>
+    `<option value="${n}" ${sDur === n ? 'selected' : ''}>${n === 1 ? '30 min' : n % 2 === 0 ? n/2 + ' ore' : Math.floor(n/2) + 'h 30'}</option>`).join('');
+  const drvOpts = drivers.map(d =>
+    `<option value="${d.id}" ${t && t.driver_id === d.id ? 'selected' : ''}>${d.name}</option>`).join('');
+  const dayOpts = DAYS_FULL.map((d, i) =>
+    `<option value="${i}" ${sDay === i ? 'selected' : ''}>${d}</option>`).join('');
+  const slotOpts = Array.from({ length: SLOTS }, (_, i) =>
+    `<option value="${i}" ${sSlot === i ? 'selected' : ''}>${slotToTime(i)}</option>`).join('');
+  const destList = dests.map(d => `<option value="${d}">`).join('');
+
+  showModal(`
+    <h2>${t ? 'Modifica viaggio' : 'Nuovo viaggio'}</h2>
+    <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)} – ${slotToTime(sSlot + sDur)}</div>
+    <div class="field"><label>Autista</label><select id="f-drv">${drvOpts}</select></div>
+    <div class="frow">
+      <div class="field"><label>Giorno</label><select id="f-day" onchange="updSub()">${dayOpts}</select></div>
+      <div class="field"><label>Ora inizio</label><select id="f-slot" onchange="updSub()">${slotOpts}</select></div>
+    </div>
+    <div class="field"><label>Durata</label><select id="f-dur" onchange="updSub()">${durOpts}</select></div>
+    <div class="field"><label>Destinazione</label>
+      <input list="dl" id="f-dest" value="${t ? t.dest : ''}" placeholder="Cerca o scrivi…">
+      <datalist id="dl">${destList}</datalist>
+    </div>
+    <div class="field"><label>Nota</label><textarea id="f-note">${t ? t.note : ''}</textarea></div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveTrip(${id || 'null'})">Salva</button>
+    </div>`);
+}
+
+function updSub() {
+  const el = document.getElementById('msub');
+  if (el) el.textContent = `${DAYS_FULL[+document.getElementById('f-day').value]} · ${slotToTime(+document.getElementById('f-slot').value)} – ${slotToTime(+document.getElementById('f-slot').value + +document.getElementById('f-dur').value)}`;
+}
+
+async function saveTrip(id) {
+  const driver_id  = +document.getElementById('f-drv').value;
+  const day        = +document.getElementById('f-day').value;
+  const start_slot = +document.getElementById('f-slot').value;
+  const duration   = +document.getElementById('f-dur').value;
+  const dest       = document.getElementById('f-dest').value.trim();
+  const note       = document.getElementById('f-note').value.trim();
+  if (!dest) { toast('Inserisci una destinazione'); return; }
+
+  const drv = drivers.find(d => d.id === driver_id);
+  let error;
+
+  if (id) {
+    ({ error } = await sb.from('trips').update({ driver_id, day, start_slot, duration, dest, note }).eq('id', id));
+    if (!error) { Object.assign(trips.find(x => x.id === id), { driver_id, day, start_slot, duration, dest, note }); }
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}` });
+  } else {
+    const { data, error: err } = await sb.from('trips').insert({ driver_id, day, start_slot, duration, dest, note, week_offset: weekOffset, created_by: currentUser.name }).select().single();
+    error = err;
+    if (!error) trips.push(data);
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name} → ${dest}` });
+  }
+
+  if (error) { toast('Errore nel salvataggio'); return; }
+  closeModal();
+  renderTrips();
+  toast('Viaggio salvato');
+}
+
+function showTripModal(id) {
+  const t   = trips.find(x => x.id === id); if (!t) return;
+  const drv = drivers.find(d => d.id === t.driver_id);
+
+  showModal(`
+    <h2>Dettaglio viaggio</h2>
+    <div class="modal-sub" style="display:flex;align-items:center;gap:8px">
+      <div style="width:10px;height:10px;border-radius:50%;background:${drv.color};flex-shrink:0"></div>
+      <strong>${drv.name}</strong> &nbsp;·&nbsp; ${DAYS_FULL[t.day]} &nbsp;·&nbsp; ${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}
+    </div>
+    <div class="field"><label>Destinazione</label><div style="padding:4px 0">${t.dest}</div></div>
+    ${t.note ? `<div class="field"><label>Nota</label><div style="padding:4px 0">${t.note}</div></div>` : ''}
+    <div class="field"><label>Inserito da</label><div style="padding:4px 0;color:var(--text2)">${t.created_by}</div></div>
+    <div class="btn-row">
+      ${canEdit() ? `<button class="btn danger" onclick="deleteTrip(${id})">Elimina</button><button class="btn primary" onclick="openTripForm(${id})">Modifica</button>` : ''}
+      <button class="btn" onclick="closeModal()">Chiudi</button>
+    </div>`);
+}
+
+async function deleteTrip(id) {
+  const t   = trips.find(x => x.id === id);
+  const drv = drivers.find(d => d.id === t.driver_id);
+  const { error } = await sb.from('trips').delete().eq('id', id);
+  if (error) { toast('Errore eliminazione'); return; }
+  trips = trips.filter(x => x.id !== id);
+  await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminato ${drv.name} → ${t.dest}` });
+  closeModal();
+  renderTrips();
+  toast('Viaggio eliminato');
+}
+
+// ══════════════════════════════════════════════════════════
+//  PANNELLI LATERALI
+// ══════════════════════════════════════════════════════════
+function switchView(v) {
+  // log solo per admin
+  if (v === 'log' && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
+  ['cal','addr','drv','log'].forEach(x => {
+    const el = document.getElementById('view-' + x);
+    el.style.display = x === v ? (x === 'cal' ? 'flex' : 'block') : 'none';
+  });
+  document.querySelectorAll('.sb-icon').forEach((el, i) => el.classList.toggle('active', ['cal','addr','drv','log'][i] === v));
+  if (v === 'addr') renderDests();
+  if (v === 'drv')  renderDrivers();
+  if (v === 'log')  renderLog();
+}
+
+function renderDests() {
+  const q = (document.getElementById('dest-search').value || '').toLowerCase();
+  document.getElementById('dest-list').innerHTML = dests
+    .filter(d => d.toLowerCase().includes(q))
+    .map(d => `<div class="panel-row"><span style="flex:1">${d}</span><span class="tag">dest</span></div>`)
+    .join('') || '<div style="color:var(--text3);font-size:12px">Nessun risultato</div>';
+}
+
+async function addDestModal() {
+  const name = prompt('Nuova destinazione:');
+  if (!name || !name.trim()) return;
+  const { error } = await sb.from('destinations').insert({ name: name.trim() });
+  if (error) { toast('Errore o destinazione già presente'); return; }
+  dests.push(name.trim());
+  dests.sort();
+  renderDests();
+  toast('Destinazione aggiunta');
+}
+
+function renderDrivers() {
+  document.getElementById('drv-list').innerHTML = drivers.map(d =>
+    `<div class="panel-row">
+      <div class="dot" style="background:${d.color}"></div>
+      <span style="flex:1;font-weight:500">${d.name}</span>
+      <span style="font-size:11px;color:var(--text2)">${trips.filter(t => t.driver_id === d.id).length} viaggi questa sett.</span>
+    </div>`).join('');
+}
+
+async function renderLog() {
+  const { data } = await sb.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100);
+  logs = data || [];
+  document.getElementById('log-list').innerHTML = logs.map(l => {
+    const d = new Date(l.created_at);
+    const ts = `${DAYS[(d.getDay()-1+7)%7]} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `<div class="log-row"><span class="log-ts">${ts}</span> · <strong>${l.username}</strong> · ${l.action}</div>`;
+  }).join('') || '<div style="color:var(--text3);font-size:12px">Nessuna attività</div>';
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════════
+function showModal(html) {
+  document.getElementById('modal-area').innerHTML =
+    `<div class="modal-bg" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()">${html}</div></div>`;
+}
+function closeModal() { document.getElementById('modal-area').innerHTML = ''; }
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg; t.style.opacity = '0';
+  document.body.appendChild(t);
+  requestAnimationFrame(() => {
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 200); }, 2400);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  START
+// ══════════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>
