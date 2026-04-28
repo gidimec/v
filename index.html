@@ -177,6 +177,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       <div class="sb-icon active" title="Calendario"   onclick="switchView('cal')">📅</div>
       <div class="sb-icon"        title="Destinazioni" onclick="switchView('addr')">📍</div>
       <div class="sb-icon"        title="Autisti"      onclick="switchView('drv')">👤</div>
+      <div class="sb-icon"        title="Veicoli"      onclick="switchView('veh')">🚛</div>
       <div class="sb-icon"        title="Log"          onclick="switchView('log')">📋</div>
     </div>
 
@@ -206,6 +207,15 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       <div id="drv-list"></div>
     </div>
 
+    <!-- VEICOLI -->
+    <div id="view-veh" class="panel" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0">Veicoli</h3>
+        <button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="addVehicleModal()">+ Aggiungi</button>
+      </div>
+      <div id="veh-list"></div>
+    </div>
+
     <!-- LOG -->
     <div id="view-log" class="panel" style="display:none">
       <h3>Log attività</h3>
@@ -231,10 +241,11 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 // ══════════════════════════════════════════════════════════
 //  STATO GLOBALE
 // ══════════════════════════════════════════════════════════
-let drivers = [];
-let dests   = [];
-let trips   = [];
-let logs    = [];
+let drivers  = [];
+let dests    = [];
+let trips    = [];
+let logs     = [];
+let vehicles = [];
 let currentUser = null;
 let weekOffset  = 0;
 
@@ -294,16 +305,18 @@ async function init() {
 }
 
 async function loadAll() {
-  const [{ data: d }, { data: ds }, { data: t }, { data: l }] = await Promise.all([
+  const [{ data: d }, { data: ds }, { data: t }, { data: l }, { data: v }] = await Promise.all([
     sb.from('drivers').select('*').eq('active', true).order('id'),
     sb.from('destinations').select('*').order('name'),
     sb.from('trips').select('*').eq('week_offset', weekOffset).order('start_slot'),
     sb.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
+    sb.from('vehicles').select('*').eq('active', true).order('name'),
   ]);
-  drivers = d || [];
-  dests   = (ds || []).map(x => x.name);
-  trips   = t || [];
-  logs    = l || [];
+  drivers  = d || [];
+  dests    = (ds || []).map(x => x.name);
+  trips    = t || [];
+  logs     = l || [];
+  vehicles = v || [];
 }
 
 async function loadTrips() {
@@ -334,7 +347,7 @@ async function onLogin(user) {
 
 function updateUIForRole() {
   // log solo per admin
-  const logIcon = document.querySelectorAll('.sb-icon')[3];
+  const logIcon = document.querySelectorAll('.sb-icon')[4];
   if (logIcon) logIcon.style.display = isAdmin() ? 'flex' : 'none';
 }
 
@@ -430,7 +443,9 @@ function renderTrips() {
       block.dataset.tripId  = t.id;
       block.style.cssText   = `top:1px;left:calc(${idx * pct}% + 1px);width:calc(${pct}% - 2px);height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left-color:${drv.color}`;
       block.title           = `${drv.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}`;
-      block.innerHTML       = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${drv.name.split(' ')[0]}</div><div style="opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.dest}</div>`;
+      const veh = vehicles.find(v => v.id === t.vehicle_id);
+      const vehicleRow = veh ? `<div style="opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px">🚛 ${veh.name}</div>` : '';
+      block.innerHTML = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${drv.name.split(' ')[0]}</div><div style="opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.dest}</div>${vehicleRow}`;
       block.addEventListener('mousedown', e => { if (!canEdit()) return; e.stopPropagation(); startTripDrag(e, t.id); });
       block.addEventListener('click',     e => { if (tripDrag && tripDrag.moved) return; e.stopPropagation(); showTripModal(t.id); });
       cell.appendChild(block);
@@ -605,6 +620,12 @@ function openTripForm(id, day, slot, dur) {
       <input list="dl" id="f-dest" value="${t ? t.dest : ''}" placeholder="Cerca o scrivi…">
       <datalist id="dl">${destList}</datalist>
     </div>
+    <div class="field"><label>Veicolo</label>
+      <select id="f-veh">
+        <option value="">-- Nessun veicolo --</option>
+        ${vehicles.map(v => `<option value="${v.id}" ${t && t.vehicle_id === v.id ? 'selected' : ''}>${v.name} (${v.type}) · ${v.plate}</option>`).join('')}
+      </select>
+    </div>
     <div class="field"><label>Nota</label><textarea id="f-note">${t ? t.note : ''}</textarea></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
@@ -624,20 +645,22 @@ async function saveTrip(id) {
   const duration   = +document.getElementById('f-dur').value;
   const dest       = document.getElementById('f-dest').value.trim();
   const note       = document.getElementById('f-note').value.trim();
+  const vehicle_id = document.getElementById('f-veh').value ? +document.getElementById('f-veh').value : null;
   if (!dest) { toast('Inserisci una destinazione'); return; }
 
   const drv = drivers.find(d => d.id === driver_id);
+  const veh = vehicle_id ? vehicles.find(v => v.id === vehicle_id) : null;
   let error;
 
   if (id) {
-    ({ error } = await sb.from('trips').update({ driver_id, day, start_slot, duration, dest, note }).eq('id', id));
-    if (!error) { Object.assign(trips.find(x => x.id === id), { driver_id, day, start_slot, duration, dest, note }); }
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}` });
+    ({ error } = await sb.from('trips').update({ driver_id, day, start_slot, duration, dest, note, vehicle_id }).eq('id', id));
+    if (!error) { Object.assign(trips.find(x => x.id === id), { driver_id, day, start_slot, duration, dest, note, vehicle_id }); }
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}${veh ? ' · ' + veh.name : ''}` });
   } else {
-    const { data, error: err } = await sb.from('trips').insert({ driver_id, day, start_slot, duration, dest, note, week_offset: weekOffset, created_by: currentUser.name }).select().single();
+    const { data, error: err } = await sb.from('trips').insert({ driver_id, day, start_slot, duration, dest, note, vehicle_id, week_offset: weekOffset, created_by: currentUser.name }).select().single();
     error = err;
     if (!error) trips.push(data);
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name} → ${dest}` });
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name} → ${dest}${veh ? ' · ' + veh.name : ''}` });
   }
 
   if (error) { toast('Errore nel salvataggio'); return; }
@@ -657,6 +680,7 @@ function showTripModal(id) {
       <strong>${drv.name}</strong> &nbsp;·&nbsp; ${DAYS_FULL[t.day]} &nbsp;·&nbsp; ${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}
     </div>
     <div class="field"><label>Destinazione</label><div style="padding:4px 0">${t.dest}</div></div>
+    ${t.vehicle_id ? `<div class="field"><label>Veicolo</label><div style="padding:4px 0">🚛 ${vehicles.find(v=>v.id===t.vehicle_id)?.name || ''} · ${vehicles.find(v=>v.id===t.vehicle_id)?.plate || ''}</div></div>` : ''}
     ${t.note ? `<div class="field"><label>Nota</label><div style="padding:4px 0">${t.note}</div></div>` : ''}
     <div class="field"><label>Inserito da</label><div style="padding:4px 0;color:var(--text2)">${t.created_by}</div></div>
     <div class="btn-row">
@@ -681,15 +705,15 @@ async function deleteTrip(id) {
 //  PANNELLI LATERALI
 // ══════════════════════════════════════════════════════════
 function switchView(v) {
-  // log solo per admin
   if (v === 'log' && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
-  ['cal','addr','drv','log'].forEach(x => {
+  ['cal','addr','drv','veh','log'].forEach(x => {
     const el = document.getElementById('view-' + x);
     el.style.display = x === v ? (x === 'cal' ? 'flex' : 'block') : 'none';
   });
-  document.querySelectorAll('.sb-icon').forEach((el, i) => el.classList.toggle('active', ['cal','addr','drv','log'][i] === v));
+  document.querySelectorAll('.sb-icon').forEach((el, i) => el.classList.toggle('active', ['cal','addr','drv','veh','log'][i] === v));
   if (v === 'addr') renderDests();
   if (v === 'drv')  renderDrivers();
+  if (v === 'veh')  renderVehicles();
   if (v === 'log')  renderLog();
 }
 
@@ -826,6 +850,64 @@ function toast(msg) {
     t.style.opacity = '1';
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 200); }, 2400);
   });
+}
+
+// ══════════════════════════════════════════════════════════
+//  VEICOLI
+// ══════════════════════════════════════════════════════════
+const VEH_TYPES = ['Camion','Furgone','Auto','Minibus','altro'];
+
+function renderVehicles() {
+  document.getElementById('veh-list').innerHTML = vehicles.map(v => `
+    <div class="panel-row">
+      <span style="font-size:16px">🚛</span>
+      <div style="flex:1">
+        <div style="font-weight:500">${v.name}</div>
+        <div style="font-size:11px;color:var(--text2)">${v.type} · ${v.plate}</div>
+      </div>
+      ${isAdmin() ? `
+        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editVehicle(${v.id})">✏️</span>
+        <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteVehicle(${v.id})">🗑️</span>
+      ` : ''}
+    </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun veicolo</div>';
+}
+
+async function addVehicleModal() {
+  const name  = prompt('Nome veicolo (es. Scania 450):');
+  if (!name || !name.trim()) return;
+  const type  = prompt('Tipo (Camion / Furgone / Auto / Minibus):') || 'Furgone';
+  const plate = prompt('Targa:');
+  if (!plate || !plate.trim()) return;
+  const { data, error } = await sb.from('vehicles').insert({ name: name.trim(), type: type.trim(), plate: plate.trim().toUpperCase(), active: true }).select().single();
+  if (error) { toast('Errore o targa già presente'); return; }
+  vehicles.push(data);
+  renderVehicles();
+  toast('Veicolo aggiunto');
+}
+
+async function editVehicle(id) {
+  const v = vehicles.find(x => x.id === id);
+  if (!v) return;
+  const name  = prompt('Nome veicolo:', v.name);
+  if (!name || !name.trim()) return;
+  const type  = prompt('Tipo:', v.type);
+  const plate = prompt('Targa:', v.plate);
+  if (!plate || !plate.trim()) return;
+  const { error } = await sb.from('vehicles').update({ name: name.trim(), type: (type||v.type).trim(), plate: plate.trim().toUpperCase() }).eq('id', id);
+  if (error) { toast('Errore modifica'); return; }
+  Object.assign(v, { name: name.trim(), type: (type||v.type).trim(), plate: plate.trim().toUpperCase() });
+  renderVehicles();
+  toast('Veicolo aggiornato');
+}
+
+async function deleteVehicle(id) {
+  const v = vehicles.find(x => x.id === id);
+  if (!confirm(`Eliminare "${v.name}"?`)) return;
+  const { error } = await sb.from('vehicles').update({ active: false }).eq('id', id);
+  if (error) { toast('Errore eliminazione'); return; }
+  vehicles = vehicles.filter(x => x.id !== id);
+  renderVehicles();
+  toast('Veicolo eliminato');
 }
 
 // ══════════════════════════════════════════════════════════
