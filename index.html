@@ -12,7 +12,6 @@
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -315,15 +314,14 @@ async function loadTrips() {
 //  AUTH
 // ══════════════════════════════════════════════════════════
 async function onLogin(user) {
-  const meta = user.user_metadata || {};
-  const appMeta = user.app_metadata || {};
-  // leggi ruolo da user_metadata (impostato via SQL) o app_metadata
-  const role = meta.role || appMeta.role || 'viewer';
-  const name = meta.name || user.email.split('@')[0];
-  // ricarica utente fresco da Supabase per avere i metadata aggiornati
-  const { data: { user: freshUser } } = await sb.auth.getUser();
-  const freshMeta = freshUser ? (freshUser.user_metadata || {}) : meta;
-  currentUser = { id: user.id, email: user.email, name: freshMeta.name || name, role: freshMeta.role || role };
+  // Leggi ruolo dalla tabella user_roles
+  const { data: roleData } = await sb.from('user_roles').select('*').eq('email', user.email).single();
+  
+  const role = roleData ? roleData.role : 'viewer';
+  const name = roleData ? roleData.name : user.email.split('@')[0];
+
+  currentUser = { id: user.id, email: user.email, name, role };
+  console.log('Login:', currentUser.email, '| Ruolo:', currentUser.role);
   document.getElementById('user-label').textContent = currentUser.name;
   hideLoginScreen();
   await loadAll();
@@ -364,6 +362,8 @@ async function doLogout() {
   currentUser = null;
   closeModal();
   showLoginScreen();
+  // forza reload per pulire tutto lo stato
+  setTimeout(() => location.reload(), 300);
 }
 
 // ══════════════════════════════════════════════════════════
