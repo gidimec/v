@@ -12,6 +12,7 @@
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -694,10 +695,15 @@ function switchView(v) {
 
 function renderDests() {
   const q = (document.getElementById('dest-search').value || '').toLowerCase();
-  document.getElementById('dest-list').innerHTML = dests
-    .filter(d => d.toLowerCase().includes(q))
-    .map(d => `<div class="panel-row"><span style="flex:1">${d}</span><span class="tag">dest</span></div>`)
-    .join('') || '<div style="color:var(--text3);font-size:12px">Nessun risultato</div>';
+  const filtered = dests.filter(d => d.toLowerCase().includes(q));
+  document.getElementById('dest-list').innerHTML = filtered.map(d => `
+    <div class="panel-row">
+      <span style="flex:1">${d}</span>
+      ${isAdmin() ? `
+        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDest('${d}')">✏️</span>
+        <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteDest('${d}')">🗑️</span>
+      ` : ''}
+    </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun risultato</div>';
 }
 
 async function addDestModal() {
@@ -711,13 +717,86 @@ async function addDestModal() {
   toast('Destinazione aggiunta');
 }
 
+async function editDest(oldName) {
+  const newName = prompt('Modifica destinazione:', oldName);
+  if (!newName || !newName.trim() || newName === oldName) return;
+  const { error } = await sb.from('destinations').update({ name: newName.trim() }).eq('name', oldName);
+  if (error) { toast('Errore modifica'); return; }
+  const idx = dests.indexOf(oldName);
+  if (idx !== -1) dests[idx] = newName.trim();
+  dests.sort();
+  renderDests();
+  toast('Destinazione aggiornata');
+}
+
+async function deleteDest(name) {
+  if (!confirm(`Eliminare "${name}"?`)) return;
+  const { error } = await sb.from('destinations').delete().eq('name', name);
+  if (error) { toast('Errore eliminazione'); return; }
+  dests = dests.filter(d => d !== name);
+  renderDests();
+  toast('Destinazione eliminata');
+}
+
 function renderDrivers() {
-  document.getElementById('drv-list').innerHTML = drivers.map(d =>
-    `<div class="panel-row">
+  document.getElementById('drv-list').innerHTML = drivers.map(d => `
+    <div class="panel-row">
       <div class="dot" style="background:${d.color}"></div>
       <span style="flex:1;font-weight:500">${d.name}</span>
-      <span style="font-size:11px;color:var(--text2)">${trips.filter(t => t.driver_id === d.id).length} viaggi questa sett.</span>
+      <span style="font-size:11px;color:var(--text2);margin-right:8px">${trips.filter(t => t.driver_id === d.id).length} viaggi</span>
+      ${isAdmin() ? `
+        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDriver(${d.id})">✏️</span>
+        <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteDriver(${d.id})">🗑️</span>
+      ` : ''}
     </div>`).join('');
+  if (isAdmin()) {
+    document.getElementById('drv-list').innerHTML += `
+      <button class="btn primary" style="width:100%;margin-top:12px" onclick="addDriverModal()">+ Nuovo autista</button>`;
+  }
+}
+
+async function addDriverModal() {
+  const name = prompt('Nome autista:');
+  if (!name || !name.trim()) return;
+  const colors = ['#1D9E75','#D85A30','#7F77DD','#E4A11B','#3A86FF','#E63946'];
+  const lights = ['#E1F5EE','#FAECE7','#EEEDFE','#FEF5E1','#E8F0FF','#FDEAEB'];
+  const texts  = ['#085041','#4A1B0C','#26215C','#5C3D00','#0A2A6E','#5C0A10'];
+  const idx = drivers.length % colors.length;
+  const { data, error } = await sb.from('drivers').insert({
+    name: name.trim(), color: colors[idx], light: lights[idx], text_color: texts[idx], active: true
+  }).select().single();
+  if (error) { toast('Errore aggiunta autista'); return; }
+  drivers.push(data);
+  renderDrivers();
+  renderLegend();
+  toast('Autista aggiunto');
+}
+
+async function editDriver(id) {
+  const drv = drivers.find(d => d.id === id);
+  if (!drv) return;
+  const name = prompt('Nome autista:', drv.name);
+  if (!name || !name.trim()) return;
+  const { error } = await sb.from('drivers').update({ name: name.trim() }).eq('id', id);
+  if (error) { toast('Errore modifica'); return; }
+  drv.name = name.trim();
+  renderDrivers();
+  renderLegend();
+  renderTrips();
+  toast('Autista aggiornato');
+}
+
+async function deleteDriver(id) {
+  const drv = drivers.find(d => d.id === id);
+  if (!confirm(`Eliminare "${drv.name}"? Verranno eliminati anche tutti i suoi viaggi!`)) return;
+  const { error } = await sb.from('drivers').update({ active: false }).eq('id', id);
+  if (error) { toast('Errore eliminazione'); return; }
+  drivers = drivers.filter(d => d.id !== id);
+  trips   = trips.filter(t => t.driver_id !== id);
+  renderDrivers();
+  renderLegend();
+  renderCal();
+  toast('Autista eliminato');
 }
 
 async function renderLog() {
