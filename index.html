@@ -316,7 +316,14 @@ async function loadTrips() {
 // ══════════════════════════════════════════════════════════
 async function onLogin(user) {
   const meta = user.user_metadata || {};
-  currentUser = { id: user.id, email: user.email, name: meta.name || user.email.split('@')[0], role: meta.role || 'viewer' };
+  const appMeta = user.app_metadata || {};
+  // leggi ruolo da user_metadata (impostato via SQL) o app_metadata
+  const role = meta.role || appMeta.role || 'viewer';
+  const name = meta.name || user.email.split('@')[0];
+  // ricarica utente fresco da Supabase per avere i metadata aggiornati
+  const { data: { user: freshUser } } = await sb.auth.getUser();
+  const freshMeta = freshUser ? (freshUser.user_metadata || {}) : meta;
+  currentUser = { id: user.id, email: user.email, name: freshMeta.name || name, role: freshMeta.role || role };
   document.getElementById('user-label').textContent = currentUser.name;
   hideLoginScreen();
   await loadAll();
