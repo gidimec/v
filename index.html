@@ -356,9 +356,16 @@ async function onLogin(user) {
 }
 
 function updateUIForRole() {
-  // log solo per admin
-  const logIcon = document.querySelectorAll('.sb-icon')[5];
-  if (logIcon) logIcon.style.display = isAdmin() ? 'flex' : 'none';
+  // Icone sidebar: cal, addr, drv, veh, usr, log
+  const icons = document.querySelectorAll('.sb-icon');
+  // addr(1), drv(2), veh(3) → visibili a admin e operatore
+  // usr(4) → solo admin
+  // log(5) → solo admin
+  if (icons[1]) icons[1].style.display = canEdit()  ? 'flex' : 'none'; // destinazioni
+  if (icons[2]) icons[2].style.display = canEdit()  ? 'flex' : 'none'; // autisti
+  if (icons[3]) icons[3].style.display = canEdit()  ? 'flex' : 'none'; // veicoli
+  if (icons[4]) icons[4].style.display = isAdmin()  ? 'flex' : 'none'; // utenti
+  if (icons[5]) icons[5].style.display = isAdmin()  ? 'flex' : 'none'; // log
 }
 
 function handleUserBtn() {
@@ -702,11 +709,21 @@ function showTripModal(id) {
 async function deleteTrip(id) {
   const t   = trips.find(x => x.id === id);
   const drv = drivers.find(d => d.id === t.driver_id);
+  showModal(`
+    <h2>Conferma eliminazione</h2>
+    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare il viaggio di <strong>${drv.name}</strong> verso <strong>${t.dest}</strong>?</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn danger" onclick="closeModal();_deleteTrip(${id})">Elimina</button>
+    </div>`);
+}
+async function _deleteTrip(id) {
+  const t   = trips.find(x => x.id === id);
+  const drv = drivers.find(d => d.id === t.driver_id);
   const { error } = await sb.from('trips').delete().eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
   trips = trips.filter(x => x.id !== id);
   await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminato ${drv.name} → ${t.dest}` });
-  closeModal();
   renderTrips();
   toast('Viaggio eliminato');
 }
@@ -716,6 +733,7 @@ async function deleteTrip(id) {
 // ══════════════════════════════════════════════════════════
 function switchView(v) {
   if ((v === 'log' || v === 'usr') && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
+  if ((v === 'addr' || v === 'drv' || v === 'veh') && !canEdit()) { toast('Accesso riservato agli operatori'); return; }
   ['cal','addr','drv','veh','usr','log'].forEach(x => {
     const el = document.getElementById('view-' + x);
     el.style.display = x === v ? (x === 'cal' ? 'flex' : 'block') : 'none';
@@ -734,7 +752,7 @@ function renderDests() {
   document.getElementById('dest-list').innerHTML = filtered.map(d => `
     <div class="panel-row">
       <span style="flex:1">${d}</span>
-      ${isAdmin() ? `
+      ${canEdit() ? `
         <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDest('${d}')">✏️</span>
         <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteDest('${d}')">🗑️</span>
       ` : ''}
@@ -765,7 +783,15 @@ async function editDest(oldName) {
 }
 
 async function deleteDest(name) {
-  if (!confirm(`Eliminare "${name}"?`)) return;
+  showModal(`
+    <h2>Conferma eliminazione</h2>
+    <p style="margin-bottom:20px;color:var(--text2)">Eliminare la destinazione <strong>${name}</strong>?</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn danger" onclick="closeModal();_deleteDest('${name}')">Elimina</button>
+    </div>`);
+}
+async function _deleteDest(name) {
   const { error } = await sb.from('destinations').delete().eq('name', name);
   if (error) { toast('Errore eliminazione'); return; }
   dests = dests.filter(d => d !== name);
@@ -779,51 +805,71 @@ function renderDrivers() {
       <div class="dot" style="background:${d.color}"></div>
       <span style="flex:1;font-weight:500">${d.name}</span>
       <span style="font-size:11px;color:var(--text2);margin-right:8px">${trips.filter(t => t.driver_id === d.id).length} viaggi</span>
-      ${isAdmin() ? `
+      ${canEdit() ? `
         <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDriver(${d.id})">✏️</span>
         <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteDriver(${d.id})">🗑️</span>
       ` : ''}
     </div>`).join('');
-  if (isAdmin()) {
+  if (canEdit()) {
     document.getElementById('drv-list').innerHTML += `
       <button class="btn primary" style="width:100%;margin-top:12px" onclick="addDriverModal()">+ Nuovo autista</button>`;
   }
 }
 
-async function addDriverModal() {
-  const name = prompt('Nome autista:');
-  if (!name || !name.trim()) return;
+function addDriverModal() { openDriverModal(null); }
+
+function openDriverModal(id) {
+  const drv = id ? drivers.find(d => d.id === id) : null;
+  showModal(`
+    <h2>${drv ? 'Modifica autista' : 'Nuovo autista'}</h2>
+    <div class="field"><label>Nome</label>
+      <input id="fd-name" value="${drv ? drv.name : ''}" placeholder="es. Marco Rossi">
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveDriver(${id || 'null'})">Salva</button>
+    </div>`);
+}
+
+async function saveDriver(id) {
+  const name = document.getElementById('fd-name').value.trim();
+  if (!name) { toast('Inserisci il nome'); return; }
   const colors = ['#1D9E75','#D85A30','#7F77DD','#E4A11B','#3A86FF','#E63946'];
   const lights = ['#E1F5EE','#FAECE7','#EEEDFE','#FEF5E1','#E8F0FF','#FDEAEB'];
   const texts  = ['#085041','#4A1B0C','#26215C','#5C3D00','#0A2A6E','#5C0A10'];
-  const idx = drivers.length % colors.length;
-  const { data, error } = await sb.from('drivers').insert({
-    name: name.trim(), color: colors[idx], light: lights[idx], text_color: texts[idx], active: true
-  }).select().single();
-  if (error) { toast('Errore aggiunta autista'); return; }
-  drivers.push(data);
-  renderDrivers();
-  renderLegend();
-  toast('Autista aggiunto');
-}
-
-async function editDriver(id) {
-  const drv = drivers.find(d => d.id === id);
-  if (!drv) return;
-  const name = prompt('Nome autista:', drv.name);
-  if (!name || !name.trim()) return;
-  const { error } = await sb.from('drivers').update({ name: name.trim() }).eq('id', id);
-  if (error) { toast('Errore modifica'); return; }
-  drv.name = name.trim();
+  if (id) {
+    const { error } = await sb.from('drivers').update({ name }).eq('id', id);
+    if (error) { toast('Errore modifica'); return; }
+    drivers.find(d => d.id === id).name = name;
+    toast('Autista aggiornato');
+  } else {
+    const idx = drivers.length % colors.length;
+    const { data, error } = await sb.from('drivers').insert({
+      name, color: colors[idx], light: lights[idx], text_color: texts[idx], active: true
+    }).select().single();
+    if (error) { toast('Errore aggiunta autista'); return; }
+    drivers.push(data);
+    toast('Autista aggiunto');
+  }
+  closeModal();
   renderDrivers();
   renderLegend();
   renderTrips();
-  toast('Autista aggiornato');
 }
+
+function editDriver(id) { openDriverModal(id); }
 
 async function deleteDriver(id) {
   const drv = drivers.find(d => d.id === id);
-  if (!confirm(`Eliminare "${drv.name}"? Verranno eliminati anche tutti i suoi viaggi!`)) return;
+  showModal(`
+    <h2>Conferma eliminazione</h2>
+    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare l'autista <strong>${drv.name}</strong>?<br>Verranno eliminati anche tutti i suoi viaggi!</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn danger" onclick="closeModal();_deleteDriver(${id})">Elimina</button>
+    </div>`);
+}
+async function _deleteDriver(id) {
   const { error } = await sb.from('drivers').update({ active: false }).eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
   drivers = drivers.filter(d => d.id !== id);
@@ -874,7 +920,7 @@ function renderVehicles() {
         <div style="font-weight:500">${v.name}</div>
         <div style="font-size:11px;color:var(--text2)">${v.type} · ${v.plate}</div>
       </div>
-      ${isAdmin() ? `
+      ${canEdit() ? `
         <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openVehicleModal(${v.id})">✏️</span>
         <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteVehicle(${v.id})">🗑️</span>
       ` : ''}
@@ -930,7 +976,15 @@ async function saveVehicle(id) {
 
 async function deleteVehicle(id) {
   const v = vehicles.find(x => x.id === id);
-  if (!confirm(`Eliminare "${v.name}"?`)) return;
+  showModal(`
+    <h2>Conferma eliminazione</h2>
+    <p style="margin-bottom:20px;color:var(--text2)">Eliminare il veicolo <strong>${v.name}</strong> (${v.plate})?</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn danger" onclick="closeModal();_deleteVehicle(${id})">Elimina</button>
+    </div>`);
+}
+async function _deleteVehicle(id) {
   const { error } = await sb.from('vehicles').update({ active: false }).eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
   vehicles = vehicles.filter(x => x.id !== id);
