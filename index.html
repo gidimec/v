@@ -132,6 +132,50 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .btn.success{background:var(--green);border-color:var(--green);color:#fff}
 .btn.sm{padding:4px 10px;font-size:11px}
 
+/* ── GRIGLIA MULTI-AUTISTA ── */
+.cal-driver-header{display:flex;align-items:stretch;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
+.cal-time-corner{width:52px;flex-shrink:0;border-right:0.5px solid var(--border2)}
+.cal-day-group{flex:1;display:flex;flex-direction:column;border-left:0.5px solid var(--border2);min-width:0}
+.cal-day-label{padding:5px 4px 2px;text-align:center;border-bottom:0.5px solid var(--border)}
+.cal-day-label .dow{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.cal-day-label .dom{font-size:16px;font-weight:500;line-height:1.3}
+.cal-day-label.today .dom{background:var(--blue);color:#fff;border-radius:50%;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center}
+.cal-drv-headers{display:flex}
+.cal-drv-hcell{flex:1;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:3px 4px;text-align:center;border-right:0.5px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-drv-hcell:last-child{border-right:none}
+.cal-drv-hcell.jolly{color:var(--text3);font-style:italic}
+.cal-body-row{display:flex}
+.cal-time-cell{width:52px;flex-shrink:0;padding:0 6px;text-align:right;font-size:10px;color:var(--text3);border-right:0.5px solid var(--border2);height:var(--slot-h);line-height:var(--slot-h);background:var(--bg);position:sticky;left:0;z-index:2}
+.cal-time-cell.hour{color:var(--text2);border-bottom-color:var(--border2)}
+.cal-day-col{flex:1;display:flex;border-left:0.5px solid var(--border2)}
+.drv-slot{flex:1;height:var(--slot-h);border-bottom:0.5px solid var(--border);border-right:0.5px solid var(--border);position:relative;transition:background .08s;cursor:default}
+.drv-slot:last-child{border-right:none}
+.drv-slot.hour-top{border-bottom-color:var(--border2)}
+.drv-slot:hover{background:rgba(55,138,221,.06)}
+.drv-slot.selecting{background:rgba(55,138,221,.13)}
+.drv-slot.sel-top{border-top:2px solid var(--blue)}
+.drv-slot.sel-bot{border-bottom:2px solid var(--blue)!important}
+.drv-slot.drop-target{background:rgba(55,138,221,.2)}
+
+/* ── TRIP SELEZIONE MULTIPLA ── */
+.trip-block.selected{outline:2px solid var(--blue);outline-offset:1px;box-shadow:0 0 0 3px rgba(55,138,221,.25)}
+.multi-drag-ghost{position:fixed;pointer-events:none;background:var(--blue);color:#fff;border-radius:var(--radius);padding:6px 12px;font-size:12px;font-weight:500;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+
+/* ── STOP LIST (destinazioni multiple nel form) ── */
+.stop-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.stop-item{display:flex;align-items:center;gap:6px;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius);padding:5px 8px}
+.stop-num{font-size:10px;font-weight:700;color:var(--text2);width:16px;text-align:center;flex-shrink:0}
+.stop-item input{flex:1;border:none;background:transparent;font-size:12px;color:var(--text);outline:none;padding:0}
+.stop-dur{width:80px;border:0.5px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;background:var(--bg);color:var(--text)}
+.stop-rm{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0}
+.stop-rm:hover{color:var(--red)}
+
+/* ── CONFIRM INPUT ── */
+.confirm-input-wrap{margin:12px 0 4px}
+.confirm-input-wrap input{width:100%;border:0.5px solid var(--red);border-radius:var(--radius);padding:8px 12px;font-size:13px;background:var(--bg2);color:var(--text);outline:none;text-align:center;letter-spacing:2px}
+.confirm-input-wrap input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(226,75,74,.15)}
+.confirm-hint{font-size:11px;color:var(--text2);text-align:center;margin-top:6px}
+
 /* ── CONTEXT MENU ── */
 .ctx{position:fixed;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);padding:4px;z-index:800;min-width:180px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
 .ctx-label{padding:4px 12px 7px;font-size:11px;color:var(--text2);border-bottom:0.5px solid var(--border);margin-bottom:4px}
@@ -361,8 +405,10 @@ let currentUser = null;
 let weekOffset  = 0;
 let currentVehTab = 'fleet';
 
-let selDrag  = null;
-let tripDrag = null;
+let selDrag      = null;
+let tripDrag     = null;
+let selectedTrips = new Set(); // ids selezionati con CTRL+click
+let multiDrag    = null;
 
 const DAYS      = ['Lun','Mar','Mer','Gio','Ven','Sab'];
 const DAYS_FULL = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
@@ -639,17 +685,43 @@ function renderCal() {
   const dates = getWeekDates();
   document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
   const grid = document.getElementById('cal-grid');
-  let html = '<div class="ch-empty"></div>';
-  dates.forEach((d, i) => {
-    html += `<div class="${isToday(d) ? 'ch-day today' : 'ch-day'}"><div class="dow">${DAYS[i]}</div><div class="dom">${d.getDate()}</div></div>`;
+
+  // Colonne per giorno: una per ogni autista + 1 jolly
+  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa' }];
+  const nCols = cols.length;
+
+  // Header: angolo + gruppi per giorno
+  let html = `<div style="display:flex;align-items:stretch;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
+    <div style="width:52px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
+  dates.forEach((d, di) => {
+    html += `<div class="cal-day-group">
+      <div class="cal-day-label${isToday(d)?' today':''}">
+        <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
+      </div>
+      <div class="cal-drv-headers">
+        ${cols.map(c => `<div class="cal-drv-hcell${c.id==='jolly'?' jolly':''}" style="color:${c.id==='jolly'?'var(--text3)':c.color||'var(--text2)'}">${c.name.split(' ')[0]}</div>`).join('')}
+      </div>
+    </div>`;
   });
+  html += '</div>';
+
+  // Body: righe orarie
   for (let s = 0; s < SLOTS; s++) {
     const isHour = s % 2 === 0;
-    html += `<div class="time-cell${isHour ? ' hour' : ''}">${isHour ? slotToTime(s) : ''}</div>`;
-    for (let d = 0; d < 6; d++) {
-      html += `<div class="slot-row${isHour ? ' hour-top' : ''}" id="sr-${d}-${s}" data-day="${d}" data-slot="${s}"></div>`;
+    html += `<div class="cal-body-row">
+      <div class="cal-time-cell${isHour?' hour':''}" style="border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'}">
+        ${isHour ? slotToTime(s) : ''}
+      </div>`;
+    for (let di = 0; di < 6; di++) {
+      html += `<div class="cal-day-col">`;
+      cols.forEach((c, ci) => {
+        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}"></div>`;
+      });
+      html += `</div>`;
     }
+    html += `</div>`;
   }
+
   grid.innerHTML = html;
   grid.onmousedown   = onGridMouseDown;
   grid.onmousemove   = onGridMouseMove;
@@ -659,34 +731,95 @@ function renderCal() {
 
 function renderTrips() {
   document.querySelectorAll('.trip-block').forEach(e => e.remove());
-  for (let d = 0; d < 6; d++) {
-    const dayTrips = trips.filter(t => t.day === d);
-    dayTrips.forEach(t => {
-      const drv = drivers.find(dr => dr.id === t.driver_id);
-      if (!drv) return;
-      const concurrent = dayTrips.filter(t2 => t2.id !== t.id && t2.start_slot < t.start_slot + t.duration && t2.start_slot + t2.duration > t.start_slot);
-      const group = [t, ...concurrent].sort((a, b) => a.id - b.id);
-      const idx = group.indexOf(t), total = group.length;
-      const cell = document.getElementById(`sr-${d}-${t.start_slot}`);
-      if (!cell) return;
-      cell.style.position = 'relative';
-      const pct = 100 / total;
-      const block = document.createElement('div');
-      block.className = 'trip-block';
-      block.id = `trip-${t.id}`;
-      block.dataset.tripId = t.id;
-      block.style.cssText = `top:1px;left:calc(${idx * pct}% + 1px);width:calc(${pct}% - 2px);height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left-color:${drv.color}`;
-      block.title = `${drv.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}`;
-      const veh = vehicles.find(v => v.id === t.vehicle_id);
-      const vehicleRow = veh ? `<div style="opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px">🚛 ${veh.name}</div>` : '';
-      block.innerHTML = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${drv.name.split(' ')[0]}</div><div style="opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.dest}</div>${vehicleRow}`;
-      block.addEventListener('mousedown', e => { if (!canEdit()) return; e.stopPropagation(); startTripDrag(e, t.id); });
-      block.addEventListener('click', e => { if (tripDrag && tripDrag.moved) return; e.stopPropagation(); showTripModal(t.id); });
-      cell.appendChild(block);
+  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
+
+  trips.forEach(t => {
+    const drv = drivers.find(dr => dr.id === t.driver_id);
+    const col = drv || cols.find(c => c.id === 'jolly');
+    const colId = drv ? drv.id : 'jolly';
+
+    const cell = document.getElementById(`ds-${t.day}-${t.start_slot}-${colId}`);
+    if (!cell) return;
+
+    // Conta quanti altri viaggi sono sovrapposti sulla stessa colonna-autista
+    const same = trips.filter(t2 => t2.id !== t.id && t2.driver_id === t.driver_id && t2.day === t.day
+      && t2.start_slot < t.start_slot + t.duration && t2.start_slot + t2.duration > t.start_slot);
+    const group = [t, ...same].sort((a,b) => a.id - b.id);
+    const idx = group.indexOf(t), total = group.length;
+    const pct = 100 / total;
+
+    const block = document.createElement('div');
+    block.className = 'trip-block' + (selectedTrips.has(t.id) ? ' selected' : '');
+    block.id = `trip-${t.id}`;
+    block.dataset.tripId = t.id;
+    block.dataset.driverId = t.driver_id || 'jolly';
+    block.style.cssText = `top:1px;left:calc(${idx*pct}% + 1px);width:calc(${pct}% - 2px);height:${t.duration * SLOT_H - 3}px;background:${col.light};color:${col.text_color};border-left-color:${col.color}`;
+    block.title = `${col.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot+t.duration)}`;
+    const veh = vehicles.find(v => v.id === t.vehicle_id);
+    block.innerHTML = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${t.dest}</div>
+      ${veh ? `<div style="opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px">🚛 ${veh.name}</div>` : ''}
+      ${t.note ? `<div style="opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px">${t.note}</div>` : ''}`;
+    block.addEventListener('mousedown', e => {
+      if (!canEdit()) return;
+      e.stopPropagation();
+      if (e.ctrlKey || e.metaKey) {
+        // CTRL+click: toggle selezione multipla
+        toggleTripSelection(t.id);
+        return;
+      }
+      if (selectedTrips.size > 0 && selectedTrips.has(t.id)) {
+        // Avvia multi-drag
+        startMultiDrag(e);
+        return;
+      }
+      if (selectedTrips.size > 0) {
+        // Click su blocco non selezionato: deseleziona tutto
+        clearSelection();
+      }
+      startTripDrag(e, t.id);
     });
-  }
+    block.addEventListener('click', e => {
+      if (e.ctrlKey || e.metaKey) return;
+      if (tripDrag && tripDrag.moved) return;
+      if (multiDrag && multiDrag.moved) return;
+      if (selectedTrips.size > 0 && !tripDrag) return;
+      e.stopPropagation();
+      showTripModal(t.id);
+    });
+    cell.style.position = 'relative';
+    cell.appendChild(block);
+  });
   clearHighlight();
 }
+
+function toggleTripSelection(id) {
+  if (selectedTrips.has(id)) selectedTrips.delete(id);
+  else selectedTrips.add(id);
+  // aggiorna stile
+  const el = document.getElementById(`trip-${id}`);
+  if (el) el.classList.toggle('selected', selectedTrips.has(id));
+  updateSelectionHint();
+}
+
+function clearSelection() {
+  selectedTrips.forEach(id => {
+    const el = document.getElementById(`trip-${id}`);
+    if (el) el.classList.remove('selected');
+  });
+  selectedTrips.clear();
+  updateSelectionHint();
+}
+
+function updateSelectionHint() {
+  const hint = document.querySelector('.hint-bar');
+  if (!hint) return;
+  if (selectedTrips.size > 0)
+    hint.textContent = `${selectedTrips.size} viaggio${selectedTrips.size>1?'i':''} selezionato${selectedTrips.size>1?'i':''} · Trascina per spostare · ESC per deselezionare`;
+  else
+    hint.textContent = 'Trascina per selezionare fascia · Tasto destro per opzioni · CTRL+click per selezione multipla';
+}
+
+document.addEventListener('keydown', e => { if (e.key==='Escape') clearSelection(); });
 
 // ── DRAG TRIP ──
 function startTripDrag(e, tripId) {
