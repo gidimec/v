@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Viaggi Autisti</title>
 
-<!-- ══════════════════════════════════════════════════════════
-  CONFIGURAZIONE  ← modifica solo questi due valori
-══════════════════════════════════════════════════════════ -->
 <script>
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
@@ -22,6 +19,10 @@
   --text:#1a1a1a;--text2:#666;--text3:#999;
   --border:rgba(0,0,0,.12);--border2:rgba(0,0,0,.22);
   --blue:#378ADD;--blue-bg:#e6f1fb;
+  --green:#1D9E75;--green-bg:#e1f5ee;
+  --orange:#D85A30;--orange-bg:#faece7;
+  --red:#E24B4A;--red-bg:#fcebeb;
+  --yellow:#E4A11B;--yellow-bg:#fef5e1;
   --radius:8px;--radius-lg:12px;
   --slot-h:28px;
 }
@@ -29,7 +30,7 @@
   --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;
   --text:#f5f5f5;--text2:#aaa;--text3:#666;
   --border:rgba(255,255,255,.12);--border2:rgba(255,255,255,.22);
-  --blue-bg:#0c2d4a;
+  --blue-bg:#0c2d4a;--green-bg:#0a2a1f;--orange-bg:#2a1508;--red-bg:#2a0808;--yellow-bg:#2a1e04;
 }}
 body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:var(--bg);color:var(--text);user-select:none}
 .app{display:flex;height:100dvh;flex-direction:column}
@@ -43,10 +44,20 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
 .leg-dot{width:10px;height:10px;border-radius:50%}
-
-/* ── USER BUTTON ── */
 .user-btn{display:flex;align-items:center;gap:6px;padding:5px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;cursor:pointer;background:transparent;color:var(--text)}
 .user-btn:hover{background:var(--bg2)}
+
+/* ── NOTIFICA BANNER ── */
+.notif-banner{display:none;align-items:center;gap:8px;padding:8px 16px;font-size:12px;border-bottom:0.5px solid var(--border2);cursor:pointer;transition:background .15s}
+.notif-banner.urgente{background:#fff3cd;color:#7d4a00;border-bottom-color:#f0c040}
+.notif-banner.critico{background:#fdecea;color:#7d1515;border-bottom-color:#E24B4A}
+@media(prefers-color-scheme:dark){
+  .notif-banner.urgente{background:#2a1e04;color:#f0c040}
+  .notif-banner.critico{background:#2a0808;color:#f87171}
+}
+.notif-banner:hover{filter:brightness(.97)}
+.notif-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 /* ── LOGIN SCREEN ── */
 .login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
@@ -61,8 +72,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 /* ── LAYOUT ── */
 .main{display:flex;flex:1;overflow:hidden}
 .sidebar{width:52px;background:var(--bg2);border-right:0.5px solid var(--border);display:flex;flex-direction:column;padding:8px 4px;gap:4px;align-items:center;flex-shrink:0}
-.sb-icon{width:36px;height:36px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;border:0.5px solid transparent;color:var(--text2);transition:all .15s}
+.sb-icon{width:36px;height:36px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;border:0.5px solid transparent;color:var(--text2);transition:all .15s;position:relative}
 .sb-icon:hover,.sb-icon.active{background:var(--bg);border-color:var(--border2);color:var(--text)}
+.sb-badge{position:absolute;top:2px;right:2px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:8px;min-width:14px;height:14px;display:flex;align-items:center;justify-content:center;padding:0 3px;pointer-events:none}
 
 /* ── CALENDAR ── */
 .cal-wrap{flex:1;overflow:auto}
@@ -81,14 +93,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .slot-row.sel-top{border-top:2px solid var(--blue)}
 .slot-row.sel-bot{border-bottom:2px solid var(--blue)!important}
 .slot-row.drop-target{background:rgba(55,138,221,.2)}
-
-/* ── TRIP BLOCKS ── */
 .trip-block{position:absolute;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:500;cursor:grab;overflow:hidden;border-left:3px solid transparent;line-height:1.3;z-index:1;transition:box-shadow .1s,opacity .1s}
 .trip-block:hover{box-shadow:0 2px 10px rgba(0,0,0,.2)}
 .trip-block.dragging{opacity:.35;cursor:grabbing}
 .trip-ghost{position:fixed;pointer-events:none;border-radius:4px;padding:3px 6px;font-size:10px;font-weight:500;z-index:9999;border-left:3px solid transparent;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.25);min-width:90px}
-
-/* ── HINT BAR ── */
 .hint-bar{padding:5px 16px;font-size:11px;color:var(--text3);border-top:0.5px solid var(--border);background:var(--bg);text-align:center;flex-shrink:0}
 
 /* ── PANELS ── */
@@ -104,6 +112,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 /* ── MODAL ── */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
 .modal{background:var(--bg);border-radius:var(--radius-lg);border:0.5px solid var(--border2);width:360px;max-width:100%;padding:20px;max-height:90dvh;overflow-y:auto}
+.modal.wide{width:520px}
 .modal h2{font-size:15px;font-weight:600;margin-bottom:6px}
 .modal-sub{font-size:12px;color:var(--text2);background:var(--bg2);border-radius:var(--radius);padding:5px 10px;margin-bottom:16px}
 .field{margin-bottom:12px}
@@ -118,8 +127,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .btn:hover{background:var(--bg2)}
 .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:500}
 .btn.primary:hover{opacity:.9}
-.btn.danger{color:#E24B4A;border-color:#E24B4A}
-.btn.danger:hover{background:#fcebeb}
+.btn.danger{color:var(--red);border-color:var(--red)}
+.btn.danger:hover{background:var(--red-bg)}
+.btn.success{background:var(--green);border-color:var(--green);color:#fff}
+.btn.sm{padding:4px 10px;font-size:11px}
 
 /* ── CONTEXT MENU ── */
 .ctx{position:fixed;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);padding:4px;z-index:800;min-width:180px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
@@ -134,6 +145,77 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .loader{display:flex;align-items:center;justify-content:center;flex:1;color:var(--text2);font-size:13px;gap:8px}
 .spinner{width:18px;height:18px;border:2px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ══════════════════════════════════════════
+   GESTIONE VEICOLI — stili specifici
+══════════════════════════════════════════ */
+.veh-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.veh-topbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:0.5px solid var(--border2);flex-shrink:0;flex-wrap:wrap}
+.veh-tabs{display:flex;gap:4px;flex:1}
+.veh-tab{padding:5px 12px;border-radius:var(--radius);font-size:12px;cursor:pointer;border:0.5px solid transparent;color:var(--text2);transition:all .15s}
+.veh-tab:hover{background:var(--bg2);color:var(--text)}
+.veh-tab.active{background:var(--bg);border-color:var(--border2);color:var(--text);font-weight:500}
+.veh-body{flex:1;overflow:auto;padding:16px}
+
+/* Card veicolo */
+.veh-card{border:0.5px solid var(--border2);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:12px;transition:box-shadow .15s}
+.veh-card:hover{box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.veh-card-head{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg2);cursor:pointer}
+.veh-card-head .veh-icon{font-size:20px;flex-shrink:0}
+.veh-card-head .veh-info{flex:1;min-width:0}
+.veh-card-head .veh-name{font-weight:600;font-size:14px}
+.veh-card-head .veh-sub{font-size:11px;color:var(--text2)}
+.veh-card-body{padding:12px 14px;display:none}
+.veh-card.open .veh-card-body{display:block}
+.veh-card.open .veh-card-head{border-bottom:0.5px solid var(--border2)}
+
+/* Status badge veicolo */
+.veh-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:20px;font-weight:500}
+.veh-status.ok{background:var(--green-bg);color:var(--green)}
+.veh-status.warn{background:var(--yellow-bg);color:var(--yellow)}
+.veh-status.alert{background:var(--orange-bg);color:var(--orange)}
+.veh-status.crit{background:var(--red-bg);color:var(--red)}
+.veh-status.fermo{background:#e0e0e0;color:#555}
+
+/* Scadenze table */
+.scad-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px}
+.scad-table th{text-align:left;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;padding:6px 8px;border-bottom:0.5px solid var(--border2)}
+.scad-table td{padding:8px 8px;border-bottom:0.5px solid var(--border);vertical-align:middle}
+.scad-table tr:last-child td{border-bottom:none}
+.scad-table tr:hover td{background:var(--bg2)}
+.scad-pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:500;white-space:nowrap}
+.scad-pill.ok{background:var(--green-bg);color:var(--green)}
+.scad-pill.warn30{background:var(--yellow-bg);color:var(--yellow)}
+.scad-pill.warn7{background:var(--orange-bg);color:var(--orange)}
+.scad-pill.scad{background:var(--red-bg);color:var(--red)}
+.scad-pill.done{background:var(--bg3);color:var(--text3)}
+
+/* Storia interventi */
+.hist-row{padding:10px 0;border-bottom:0.5px solid var(--border);display:flex;gap:12px;align-items:flex-start}
+.hist-row:last-child{border-bottom:none}
+.hist-icon{font-size:18px;flex-shrink:0;width:28px;text-align:center}
+.hist-body{flex:1;min-width:0}
+.hist-date{font-size:11px;color:var(--text2);margin-bottom:2px}
+.hist-desc{font-size:13px;line-height:1.4}
+.hist-meta{font-size:11px;color:var(--text3);margin-top:2px}
+.hist-cost{font-weight:600;color:var(--text)}
+
+/* Fermo veicolo */
+.fermo-row{padding:8px 12px;border-radius:var(--radius);background:var(--red-bg);border:0.5px solid rgba(226,75,74,.3);margin-bottom:8px;font-size:12px}
+
+/* ── POPUP NOTIFICHE ── */
+.notif-popup{position:fixed;top:54px;right:16px;width:340px;max-width:calc(100vw - 32px);background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius-lg);box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:600;overflow:hidden;animation:slideIn .2s ease}
+@keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.notif-popup-head{padding:12px 14px;border-bottom:0.5px solid var(--border2);font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:space-between}
+.notif-item{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .1s}
+.notif-item:last-child{border-bottom:none}
+.notif-item:hover{background:var(--bg2)}
+.notif-item-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.notif-item-body{flex:1;min-width:0}
+.notif-item-title{font-weight:500;font-size:12px;line-height:1.3}
+.notif-item-sub{font-size:11px;color:var(--text2);margin-top:2px}
+.notif-item.crit .notif-item-title{color:var(--red)}
+.notif-item.warn .notif-item-title{color:var(--orange)}
 </style>
 </head>
 <body>
@@ -145,7 +227,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
     <p>Accedi per visualizzare il calendario</p>
     <div class="field"><label>Email</label><input id="ls-email" type="email" placeholder="email@esempio.it" onkeydown="if(event.key==='Enter')doLoginScreen()"></div>
     <div class="field"><label>Password</label><input id="ls-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLoginScreen()"></div>
-    <div id="ls-err" style="color:#E24B4A;font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
+    <div id="ls-err" style="color:var(--red);font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
     <button class="btn primary" style="width:100%;padding:10px" onclick="doLoginScreen()">Accedi</button>
     <div style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">Contatta l'amministratore per ottenere le credenziali</div>
   </div>
@@ -156,7 +238,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:4px">
       <div style="font-size:15px;font-weight:600">🚌 Viaggi Autisti</div>
-      <div class="week-nav">
+      <div class="week-nav" id="week-nav-wrap">
         <button onclick="prevWeek()">‹</button>
         <span id="week-label">…</span>
         <button onclick="nextWeek()">›</button>
@@ -164,10 +246,21 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
     </div>
     <div style="display:flex;align-items:center;gap:14px">
       <div class="legend" id="legend"></div>
+      <!-- Campana notifiche -->
+      <button class="user-btn" id="notif-btn" onclick="toggleNotifPopup()" style="position:relative;display:none">
+        🔔<span id="notif-count" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:8px;min-width:14px;height:14px;padding:0 3px;display:flex;align-items:center;justify-content:center"></span>
+      </button>
       <button class="user-btn" onclick="handleUserBtn()">
         <span>👤</span><span id="user-label">Accedi</span>
       </button>
     </div>
+  </div>
+
+  <!-- BANNER NOTIFICHE -->
+  <div class="notif-banner" id="notif-banner" onclick="switchView('veh');hideNotifBanner()">
+    <div class="notif-dot" id="notif-dot" style="background:var(--red)"></div>
+    <span id="notif-banner-text"></span>
+    <span style="margin-left:auto;font-size:11px;opacity:.7">Clicca per dettagli →</span>
   </div>
 
   <!-- MAIN -->
@@ -208,16 +301,23 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       <div id="drv-list"></div>
     </div>
 
-    <!-- VEICOLI -->
-    <div id="view-veh" class="panel" style="display:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <h3 style="margin:0">Veicoli</h3>
-        <button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="addVehicleModal()">+ Aggiungi</button>
+    <!-- ══════════════════════════════════════
+         VEICOLI — pannello completo
+    ══════════════════════════════════════ -->
+    <div id="view-veh" class="veh-panel" style="display:none">
+      <div class="veh-topbar">
+        <div class="veh-tabs">
+          <div class="veh-tab active" id="vtab-fleet"    onclick="switchVehTab('fleet')">🚛 Parco mezzi</div>
+          <div class="veh-tab"        id="vtab-scad"     onclick="switchVehTab('scad')">📅 Scadenze</div>
+          <div class="veh-tab"        id="vtab-storia"   onclick="switchVehTab('storia')">🔧 Storico</div>
+          <div class="veh-tab"        id="vtab-fermi"    onclick="switchVehTab('fermi')">🚫 Fermi</div>
+        </div>
+        <button class="btn primary" style="padding:5px 12px;font-size:12px" id="veh-add-btn" onclick="vehAddAction()">+ Aggiungi</button>
       </div>
-      <div id="veh-list"></div>
+      <div class="veh-body" id="veh-body"></div>
     </div>
 
-    <!-- UTENTI (solo admin) -->
+    <!-- UTENTI -->
     <div id="view-usr" class="panel" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <h3 style="margin:0">Gestione accessi</h3>
@@ -234,12 +334,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
   </div>
 </div>
 
-<!-- CONTEXT MENU -->
-</div><!-- /main-app -->
-
 <div id="ctx" class="ctx" style="display:none"></div>
 <div id="modal-area"></div>
 <div id="ghost" class="trip-ghost" style="display:none"></div>
+<div id="notif-popup" style="display:none"></div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -256,12 +354,14 @@ let dests    = [];
 let trips    = [];
 let logs     = [];
 let vehicles = [];
+let deadlines    = [];
+let vehicleHist  = [];
+let vehicleStops = [];
 let currentUser = null;
 let weekOffset  = 0;
+let currentVehTab = 'fleet';
 
-// drag-select nuovi viaggi
-let selDrag = null;
-// drag-move viaggio esistente
+let selDrag  = null;
 let tripDrag = null;
 
 const DAYS      = ['Lun','Mar','Mer','Gio','Ven','Sab'];
@@ -275,7 +375,7 @@ function canEdit() { return currentUser && (currentUser.role === 'admin' || curr
 function isAdmin() { return currentUser && currentUser.role === 'admin'; }
 
 // ══════════════════════════════════════════════════════════
-//  LOGIN SCREEN (obbligatorio per tutti)
+//  LOGIN
 // ══════════════════════════════════════════════════════════
 async function doLoginScreen() {
   const email = document.getElementById('ls-email').value.trim();
@@ -287,46 +387,41 @@ async function doLoginScreen() {
   if (error) { errEl.textContent = 'Email o password errati'; return; }
   await onLogin(data.user);
 }
-
-function showLoginScreen() {
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('main-app').style.display = 'none';
-}
-function hideLoginScreen() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'flex';
-}
+function showLoginScreen() { document.getElementById('login-screen').style.display='flex'; document.getElementById('main-app').style.display='none'; }
+function hideLoginScreen() { document.getElementById('login-screen').style.display='none'; document.getElementById('main-app').style.display='flex'; }
 
 // ══════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ══════════════════════════════════════════════════════════
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    await onLogin(session.user);
-  } else {
-    showLoginScreen();
-  }
-
-  sb.auth.onAuthStateChange(async (_event, session) => {
+  if (session) await onLogin(session.user);
+  else showLoginScreen();
+  sb.auth.onAuthStateChange(async (_e, session) => {
     if (session) await onLogin(session.user);
     else { currentUser = null; showLoginScreen(); }
   });
 }
 
 async function loadAll() {
-  const [{ data: d }, { data: ds }, { data: t }, { data: l }, { data: v }] = await Promise.all([
+  const [{ data: d }, { data: ds }, { data: t }, { data: l }, { data: v }, { data: dl }, { data: vh }, { data: vs }] = await Promise.all([
     sb.from('drivers').select('*').eq('active', true).order('id'),
     sb.from('destinations').select('*').order('name'),
     sb.from('trips').select('*').eq('week_offset', weekOffset).order('start_slot'),
     sb.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
     sb.from('vehicles').select('*').eq('active', true).order('name'),
+    sb.from('vehicle_deadlines').select('*').order('deadline_date'),
+    sb.from('vehicle_history').select('*').order('date', { ascending: false }),
+    sb.from('vehicle_stops').select('*').order('start_date', { ascending: false }),
   ]);
-  drivers  = d || [];
-  dests    = (ds || []).map(x => x.name);
-  trips    = t || [];
-  logs     = l || [];
-  vehicles = v || [];
+  drivers       = d  || [];
+  dests         = (ds || []).map(x => x.name);
+  trips         = t  || [];
+  logs          = l  || [];
+  vehicles      = v  || [];
+  deadlines     = dl || [];
+  vehicleHist   = vh || [];
+  vehicleStops  = vs || [];
 }
 
 async function loadTrips() {
@@ -334,67 +429,191 @@ async function loadTrips() {
   trips = data || [];
 }
 
+async function loadVehicleData() {
+  const [{ data: dl }, { data: vh }, { data: vs }] = await Promise.all([
+    sb.from('vehicle_deadlines').select('*').order('deadline_date'),
+    sb.from('vehicle_history').select('*').order('date', { ascending: false }),
+    sb.from('vehicle_stops').select('*').order('start_date', { ascending: false }),
+  ]);
+  deadlines    = dl || [];
+  vehicleHist  = vh || [];
+  vehicleStops = vs || [];
+}
+
 // ══════════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════════
 async function onLogin(user) {
-  // Leggi ruolo dalla tabella user_roles
   const { data: roleData } = await sb.from('user_roles').select('*').eq('email', user.email).single();
-  
   const role = roleData ? roleData.role : 'viewer';
   const name = roleData ? roleData.name : user.email.split('@')[0];
-
   currentUser = { id: user.id, email: user.email, name, role };
-  console.log('Login:', currentUser.email, '| Ruolo:', currentUser.role);
   document.getElementById('user-label').textContent = currentUser.name;
   hideLoginScreen();
   await loadAll();
   renderLegend();
   renderCal();
-  // mostra/nascondi sidebar voci admin
   updateUIForRole();
+  // Controlla scadenze e mostra notifiche
+  checkDeadlineNotifications();
 }
 
 function updateUIForRole() {
-  // Icone sidebar: cal, addr, drv, veh, usr, log
   const icons = document.querySelectorAll('.sb-icon');
-  // addr(1), drv(2), veh(3) → visibili a admin e operatore
-  // usr(4) → solo admin
-  // log(5) → solo admin
-  if (icons[1]) icons[1].style.display = canEdit()  ? 'flex' : 'none'; // destinazioni
-  if (icons[2]) icons[2].style.display = canEdit()  ? 'flex' : 'none'; // autisti
-  if (icons[3]) icons[3].style.display = canEdit()  ? 'flex' : 'none'; // veicoli
-  if (icons[4]) icons[4].style.display = isAdmin()  ? 'flex' : 'none'; // utenti
-  if (icons[5]) icons[5].style.display = isAdmin()  ? 'flex' : 'none'; // log
+  if (icons[1]) icons[1].style.display = canEdit()  ? 'flex' : 'none';
+  if (icons[2]) icons[2].style.display = canEdit()  ? 'flex' : 'none';
+  if (icons[3]) icons[3].style.display = canEdit()  ? 'flex' : 'none';
+  if (icons[4]) icons[4].style.display = isAdmin()  ? 'flex' : 'none';
+  if (icons[5]) icons[5].style.display = isAdmin()  ? 'flex' : 'none';
+  if (canEdit()) {
+    document.getElementById('notif-btn').style.display = 'flex';
+  }
 }
 
-function handleUserBtn() {
-  showProfileModal();
-}
-
+function handleUserBtn() { showProfileModal(); }
 function showProfileModal() {
-  const roleLabel = { admin: 'Amministratore', operatore: 'Operatore', viewer: 'Visualizzatore' };
-  const roleClass = { admin: 'role-admin', operatore: 'role-operatore', viewer: 'role-viewer' };
-  showModal(`
-    <h2>Profilo</h2>
-    <p style="margin-bottom:16px;color:var(--text2)">
-      Connesso come <strong>${currentUser.name}</strong>
-      <span class="role-badge ${roleClass[currentUser.role]}">${roleLabel[currentUser.role]}</span>
-    </p>
+  const roleLabel = { admin:'Amministratore', operatore:'Operatore', viewer:'Visualizzatore' };
+  const roleClass = { admin:'role-admin', operatore:'role-operatore', viewer:'role-viewer' };
+  showModal(`<h2>Profilo</h2>
+    <p style="margin-bottom:16px;color:var(--text2)">Connesso come <strong>${currentUser.name}</strong>
+    <span class="role-badge ${roleClass[currentUser.role]}">${roleLabel[currentUser.role]}</span></p>
     <div style="font-size:12px;color:var(--text2);margin-bottom:16px">${currentUser.email}</div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Chiudi</button>
       <button class="btn danger" onclick="doLogout()">Esci</button>
     </div>`);
 }
-
 async function doLogout() {
-  await sb.auth.signOut();
-  currentUser = null;
-  closeModal();
-  showLoginScreen();
-  // forza reload per pulire tutto lo stato
+  await sb.auth.signOut(); currentUser = null; closeModal(); showLoginScreen();
   setTimeout(() => location.reload(), 300);
+}
+
+// ══════════════════════════════════════════════════════════
+//  NOTIFICHE SCADENZE
+// ══════════════════════════════════════════════════════════
+function getDeadlineStatus(dl) {
+  if (dl.completed) return 'done';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(dl.deadline_date); d.setHours(0,0,0,0);
+  const diff = Math.round((d - today) / 86400000);
+  if (diff < 0)  return 'scad';
+  if (diff <= 7)  return 'warn7';
+  if (diff <= 30) return 'warn30';
+  return 'ok';
+}
+
+function getDeadlineDaysText(dl) {
+  if (dl.completed) return 'Completato';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(dl.deadline_date); d.setHours(0,0,0,0);
+  const diff = Math.round((d - today) / 86400000);
+  if (diff < 0)  return `Scaduto da ${Math.abs(diff)} giorni`;
+  if (diff === 0) return 'Scade oggi!';
+  if (diff === 1) return 'Scade domani';
+  return `Tra ${diff} giorni`;
+}
+
+function checkDeadlineNotifications() {
+  const alerts = deadlines.filter(dl => {
+    const s = getDeadlineStatus(dl);
+    return s === 'scad' || s === 'warn7' || s === 'warn30';
+  });
+
+  const critics = alerts.filter(dl => getDeadlineStatus(dl) === 'scad' || getDeadlineStatus(dl) === 'warn7');
+
+  // Badge icona sidebar
+  const vehIcon = document.querySelectorAll('.sb-icon')[3];
+  if (vehIcon) {
+    let badge = vehIcon.querySelector('.sb-badge');
+    if (alerts.length > 0) {
+      if (!badge) { badge = document.createElement('div'); badge.className='sb-badge'; vehIcon.appendChild(badge); }
+      badge.textContent = alerts.length;
+    } else if (badge) badge.remove();
+  }
+
+  // Campana
+  const notifCount = document.getElementById('notif-count');
+  if (alerts.length > 0) {
+    notifCount.textContent = alerts.length;
+    notifCount.style.display = 'flex';
+  } else {
+    notifCount.style.display = 'none';
+  }
+
+  // Banner
+  const banner = document.getElementById('notif-banner');
+  const bannerText = document.getElementById('notif-banner-text');
+  const dot = document.getElementById('notif-dot');
+  if (critics.length > 0) {
+    banner.style.display = 'flex';
+    banner.className = 'notif-banner critico';
+    dot.style.background = 'var(--red)';
+    bannerText.textContent = `⚠️ ${critics.length} scadenza${critics.length>1?'e':''} veicol${critics.length>1?'i':'o'} critica${critics.length>1?'che':''} — ${critics.slice(0,2).map(dl => { const v=vehicles.find(x=>x.id===dl.vehicle_id); return (v?v.name:'?')+' · '+dl.type; }).join(' | ')}`;
+  } else if (alerts.length > 0) {
+    banner.style.display = 'flex';
+    banner.className = 'notif-banner urgente';
+    dot.style.background = 'var(--yellow)';
+    bannerText.textContent = `⏰ ${alerts.length} scadenza${alerts.length>1?'e':''} veicol${alerts.length>1?'i':'o'} in arrivo nei prossimi 30 giorni`;
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function hideNotifBanner() {
+  document.getElementById('notif-banner').style.display = 'none';
+}
+
+function toggleNotifPopup() {
+  const popup = document.getElementById('notif-popup');
+  if (popup.style.display !== 'none') { popup.style.display = 'none'; return; }
+
+  const alerts = deadlines
+    .filter(dl => !dl.completed)
+    .map(dl => ({ ...dl, status: getDeadlineStatus(dl) }))
+    .filter(dl => dl.status !== 'ok')
+    .sort((a,b) => new Date(a.deadline_date) - new Date(b.deadline_date));
+
+  if (alerts.length === 0) {
+    popup.style.display = 'none';
+    toast('Nessuna scadenza imminente 👍');
+    return;
+  }
+
+  const statusIcon = { scad:'🔴', warn7:'🟠', warn30:'🟡' };
+  const items = alerts.map(dl => {
+    const v = vehicles.find(x => x.id === dl.vehicle_id);
+    const cls = dl.status === 'scad' ? 'crit' : (dl.status === 'warn7' ? 'warn' : '');
+    return `<div class="notif-item ${cls}" onclick="switchView('veh');switchVehTab('scad');closeNotifPopup()">
+      <div class="notif-item-icon">${statusIcon[dl.status]}</div>
+      <div class="notif-item-body">
+        <div class="notif-item-title">${v ? v.name : '?'} — ${dl.type}</div>
+        <div class="notif-item-sub">${getDeadlineDaysText(dl)} · scade il ${fmtDateShort(dl.deadline_date)}${dl.km_deadline ? ' · km '+dl.km_deadline.toLocaleString() : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  popup.innerHTML = `<div class="notif-popup">
+    <div class="notif-popup-head">
+      🔔 Scadenze veicoli
+      <button class="btn sm" onclick="closeNotifPopup()">✕</button>
+    </div>
+    ${items}
+    <div style="padding:8px 14px;font-size:11px;color:var(--text3);text-align:center;cursor:pointer" onclick="switchView('veh');switchVehTab('scad');closeNotifPopup()">
+      Vedi tutte le scadenze →
+    </div>
+  </div>`;
+  popup.style.display = 'block';
+  setTimeout(() => document.addEventListener('click', closeNotifPopupOutside, { once: true }), 50);
+}
+function closeNotifPopup() { document.getElementById('notif-popup').style.display = 'none'; }
+function closeNotifPopupOutside(e) {
+  const p = document.getElementById('notif-popup');
+  if (!p.contains(e.target)) p.style.display = 'none';
+}
+
+function fmtDateShort(iso) {
+  const d = new Date(iso);
+  return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -408,7 +627,6 @@ function getWeekDates() {
 function fmtDate(d) { return d.getDate() + '/' + (d.getMonth() + 1); }
 function isToday(d) { const t = new Date(); return d.toDateString() === t.toDateString(); }
 function slotToTime(s) { const h = START_H + Math.floor(s / 2); const m = s % 2 === 0 ? '00' : '30'; return `${h}:${m}`; }
-
 async function prevWeek() { weekOffset--; await loadTrips(); renderCal(); }
 async function nextWeek() { weekOffset++; await loadTrips(); renderCal(); }
 
@@ -433,9 +651,9 @@ function renderCal() {
     }
   }
   grid.innerHTML = html;
-  grid.onmousedown    = onGridMouseDown;
-  grid.onmousemove    = onGridMouseMove;
-  grid.oncontextmenu  = onGridCtx;
+  grid.onmousedown   = onGridMouseDown;
+  grid.onmousemove   = onGridMouseMove;
+  grid.oncontextmenu = onGridCtx;
   renderTrips();
 }
 
@@ -448,37 +666,34 @@ function renderTrips() {
       if (!drv) return;
       const concurrent = dayTrips.filter(t2 => t2.id !== t.id && t2.start_slot < t.start_slot + t.duration && t2.start_slot + t2.duration > t.start_slot);
       const group = [t, ...concurrent].sort((a, b) => a.id - b.id);
-      const idx   = group.indexOf(t);
-      const total = group.length;
-      const cell  = document.getElementById(`sr-${d}-${t.start_slot}`);
+      const idx = group.indexOf(t), total = group.length;
+      const cell = document.getElementById(`sr-${d}-${t.start_slot}`);
       if (!cell) return;
       cell.style.position = 'relative';
-      const pct   = 100 / total;
+      const pct = 100 / total;
       const block = document.createElement('div');
-      block.className       = 'trip-block';
-      block.id              = `trip-${t.id}`;
-      block.dataset.tripId  = t.id;
-      block.style.cssText   = `top:1px;left:calc(${idx * pct}% + 1px);width:calc(${pct}% - 2px);height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left-color:${drv.color}`;
-      block.title           = `${drv.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}`;
+      block.className = 'trip-block';
+      block.id = `trip-${t.id}`;
+      block.dataset.tripId = t.id;
+      block.style.cssText = `top:1px;left:calc(${idx * pct}% + 1px);width:calc(${pct}% - 2px);height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left-color:${drv.color}`;
+      block.title = `${drv.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}`;
       const veh = vehicles.find(v => v.id === t.vehicle_id);
       const vehicleRow = veh ? `<div style="opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px">🚛 ${veh.name}</div>` : '';
       block.innerHTML = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${drv.name.split(' ')[0]}</div><div style="opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.dest}</div>${vehicleRow}`;
       block.addEventListener('mousedown', e => { if (!canEdit()) return; e.stopPropagation(); startTripDrag(e, t.id); });
-      block.addEventListener('click',     e => { if (tripDrag && tripDrag.moved) return; e.stopPropagation(); showTripModal(t.id); });
+      block.addEventListener('click', e => { if (tripDrag && tripDrag.moved) return; e.stopPropagation(); showTripModal(t.id); });
       cell.appendChild(block);
     });
   }
   clearHighlight();
 }
 
-// ══════════════════════════════════════════════════════════
-//  DRAG & DROP VIAGGIO ESISTENTE
-// ══════════════════════════════════════════════════════════
+// ── DRAG TRIP ──
 function startTripDrag(e, tripId) {
-  const t   = trips.find(x => x.id === tripId);
+  const t = trips.find(x => x.id === tripId);
   const drv = drivers.find(d => d.id === t.driver_id);
   const block = document.getElementById(`trip-${tripId}`);
-  const rect  = block.getBoundingClientRect();
+  const rect = block.getBoundingClientRect();
   const offsetSlot = Math.floor((e.clientY - rect.top) / SLOT_H);
   const ghost = document.getElementById('ghost');
   ghost.style.cssText = `display:block;width:110px;height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left:3px solid ${drv.color};left:${e.clientX + 14}px;top:${e.clientY - 10}px`;
@@ -486,69 +701,55 @@ function startTripDrag(e, tripId) {
   block.classList.add('dragging');
   tripDrag = { tripId, offsetSlot, moved: false, origDay: t.day, origSlot: t.start_slot };
   document.addEventListener('mousemove', onTripMove);
-  document.addEventListener('mouseup',   onTripUp);
+  document.addEventListener('mouseup', onTripUp);
 }
-
 function onTripMove(e) {
   if (!tripDrag) return;
   tripDrag.moved = true;
   const ghost = document.getElementById('ghost');
   ghost.style.left = (e.clientX + 14) + 'px';
-  ghost.style.top  = (e.clientY - 10) + 'px';
+  ghost.style.top = (e.clientY - 10) + 'px';
   const target = getSlotAt(e.clientX, e.clientY);
   clearDropTargets();
   if (target) {
     const t = trips.find(x => x.id === tripDrag.tripId);
     const newSlot = Math.max(0, Math.min(SLOTS - t.duration, target.slot - tripDrag.offsetSlot));
-    for (let s = newSlot; s < newSlot + t.duration; s++) {
-      const el = document.getElementById(`sr-${target.day}-${s}`);
-      if (el) el.classList.add('drop-target');
-    }
-    tripDrag.targetDay  = target.day;
-    tripDrag.targetSlot = newSlot;
+    for (let s = newSlot; s < newSlot + t.duration; s++) { const el = document.getElementById(`sr-${target.day}-${s}`); if (el) el.classList.add('drop-target'); }
+    tripDrag.targetDay = target.day; tripDrag.targetSlot = newSlot;
   }
 }
-
 async function onTripUp(e) {
   if (!tripDrag) return;
   document.removeEventListener('mousemove', onTripMove);
-  document.removeEventListener('mouseup',   onTripUp);
+  document.removeEventListener('mouseup', onTripUp);
   document.getElementById('ghost').style.display = 'none';
   const block = document.getElementById(`trip-${tripDrag.tripId}`);
   if (block) block.classList.remove('dragging');
   clearDropTargets();
-
   if (tripDrag.moved && tripDrag.targetDay !== undefined) {
-    const t   = trips.find(x => x.id === tripDrag.tripId);
+    const t = trips.find(x => x.id === tripDrag.tripId);
     const drv = drivers.find(d => d.id === t.driver_id);
     const oldInfo = `${DAYS[t.day]} ${slotToTime(t.start_slot)}`;
-    t.day        = tripDrag.targetDay;
-    t.start_slot = tripDrag.targetSlot;
+    t.day = tripDrag.targetDay; t.start_slot = tripDrag.targetSlot;
     renderTrips();
-    // salva su Supabase
     const { error } = await sb.from('trips').update({ day: t.day, start_slot: t.start_slot }).eq('id', t.id);
     if (error) { toast('Errore nel salvataggio'); }
     else {
-      const action = `Spostato ${drv.name} → ${t.dest} (${oldInfo} → ${DAYS[t.day]} ${slotToTime(t.start_slot)})`;
-      await sb.from('activity_log').insert({ username: currentUser.name, action });
+      await sb.from('activity_log').insert({ username: currentUser.name, action: `Spostato ${drv.name} → ${t.dest} (${oldInfo} → ${DAYS[t.day]} ${slotToTime(t.start_slot)})` });
       toast(`Spostato a ${DAYS_FULL[t.day]} ${slotToTime(t.start_slot)}`);
     }
   }
   tripDrag = null;
 }
-
 function getSlotAt(x, y) {
-  for (const el of document.elementsFromPoint(x, y)) {
+  for (const el of document.elementsFromPoint(x, y))
     if (el.dataset && el.dataset.day !== undefined && el.dataset.slot !== undefined)
       return { day: +el.dataset.day, slot: +el.dataset.slot };
-  }
   return null;
 }
 function clearDropTargets() { document.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target')); }
 
-// ══════════════════════════════════════════════════════════
-//  DRAG-TO-SELECT (nuovo viaggio)
-// ══════════════════════════════════════════════════════════
+// ── DRAG SELECT ──
 function onGridMouseDown(e) {
   if (e.button !== 0) return;
   const sr = e.target.closest('.slot-row');
@@ -561,8 +762,7 @@ function onGridMouseMove(e) {
   if (!selDrag || !selDrag.active) return;
   const sr = e.target.closest('.slot-row');
   if (!sr || +sr.dataset.day !== selDrag.day) return;
-  selDrag.endSlot = +sr.dataset.slot;
-  highlightSel();
+  selDrag.endSlot = +sr.dataset.slot; highlightSel();
 }
 function onGridCtx(e) {
   e.preventDefault();
@@ -578,7 +778,7 @@ document.addEventListener('mouseup', () => {
   if (selDrag && selDrag.active) {
     selDrag.active = false;
     if (!canEdit()) { selDrag = null; clearHighlight(); return; }
-    const lo  = Math.min(selDrag.startSlot, selDrag.endSlot);
+    const lo = Math.min(selDrag.startSlot, selDrag.endSlot);
     const dur = Math.abs(selDrag.endSlot - selDrag.startSlot) + 1;
     const day = selDrag.day;
     selDrag = null; clearHighlight();
@@ -588,45 +788,34 @@ document.addEventListener('mouseup', () => {
 function highlightSel() {
   clearHighlight();
   if (!selDrag) return;
-  const lo = Math.min(selDrag.startSlot, selDrag.endSlot);
-  const hi = Math.max(selDrag.startSlot, selDrag.endSlot);
+  const lo = Math.min(selDrag.startSlot, selDrag.endSlot), hi = Math.max(selDrag.startSlot, selDrag.endSlot);
   for (let s = lo; s <= hi; s++) {
     const el = document.getElementById(`sr-${selDrag.day}-${s}`);
-    if (el) { el.classList.add('selecting'); if (s === lo) el.classList.add('sel-top'); if (s === hi) el.classList.add('sel-bot'); }
+    if (el) { el.classList.add('selecting'); if (s===lo) el.classList.add('sel-top'); if (s===hi) el.classList.add('sel-bot'); }
   }
 }
 function clearHighlight() { document.querySelectorAll('.selecting,.sel-top,.sel-bot').forEach(e => e.classList.remove('selecting','sel-top','sel-bot')); }
 
 function showCtxMenu(x, y, day, slot, dur) {
   const ctx = document.getElementById('ctx');
-  ctx.innerHTML = `<div class="ctx-label">${DAYS_FULL[day]} · ${slotToTime(slot)}${dur > 1 ? ' – ' + slotToTime(slot + dur) : ''}</div>
+  ctx.innerHTML = `<div class="ctx-label">${DAYS_FULL[day]} · ${slotToTime(slot)}${dur>1?' – '+slotToTime(slot+dur):''}</div>
     <div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur});hideCtx()">+ Inserisci viaggio</div>`;
-  ctx.style.display = 'block'; ctx.style.left = x + 'px'; ctx.style.top = y + 'px';
+  ctx.style.display='block'; ctx.style.left=x+'px'; ctx.style.top=y+'px';
   setTimeout(() => document.addEventListener('click', hideCtx, { once: true }), 0);
 }
-function hideCtx() { document.getElementById('ctx').style.display = 'none'; }
+function hideCtx() { document.getElementById('ctx').style.display='none'; }
 
-// ══════════════════════════════════════════════════════════
-//  FORM VIAGGIO
-// ══════════════════════════════════════════════════════════
+// ── FORM VIAGGIO ──
 function openTripForm(id, day, slot, dur) {
-  const t    = id ? trips.find(x => x.id === id) : null;
-  const sDay  = t ? t.day        : (day  || 0);
-  const sSlot = t ? t.start_slot : (slot || 0);
-  const sDur  = t ? t.duration   : (dur  || 2);
-  const durOpts = [1,2,3,4,6,8,10,12].map(n =>
-    `<option value="${n}" ${sDur === n ? 'selected' : ''}>${n === 1 ? '30 min' : n % 2 === 0 ? n/2 + ' ore' : Math.floor(n/2) + 'h 30'}</option>`).join('');
-  const drvOpts = drivers.map(d =>
-    `<option value="${d.id}" ${t && t.driver_id === d.id ? 'selected' : ''}>${d.name}</option>`).join('');
-  const dayOpts = DAYS_FULL.map((d, i) =>
-    `<option value="${i}" ${sDay === i ? 'selected' : ''}>${d}</option>`).join('');
-  const slotOpts = Array.from({ length: SLOTS }, (_, i) =>
-    `<option value="${i}" ${sSlot === i ? 'selected' : ''}>${slotToTime(i)}</option>`).join('');
+  const t = id ? trips.find(x => x.id === id) : null;
+  const sDay = t ? t.day : (day||0), sSlot = t ? t.start_slot : (slot||0), sDur = t ? t.duration : (dur||2);
+  const durOpts = [1,2,3,4,6,8,10,12].map(n => `<option value="${n}" ${sDur===n?'selected':''}>${n===1?'30 min':n%2===0?n/2+' ore':Math.floor(n/2)+'h 30'}</option>`).join('');
+  const drvOpts = drivers.map(d => `<option value="${d.id}" ${t&&t.driver_id===d.id?'selected':''}>${d.name}</option>`).join('');
+  const dayOpts = DAYS_FULL.map((d,i) => `<option value="${i}" ${sDay===i?'selected':''}>${d}</option>`).join('');
+  const slotOpts = Array.from({length:SLOTS},(_,i) => `<option value="${i}" ${sSlot===i?'selected':''}>${slotToTime(i)}</option>`).join('');
   const destList = dests.map(d => `<option value="${d}">`).join('');
-
-  showModal(`
-    <h2>${t ? 'Modifica viaggio' : 'Nuovo viaggio'}</h2>
-    <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)} – ${slotToTime(sSlot + sDur)}</div>
+  showModal(`<h2>${t?'Modifica viaggio':'Nuovo viaggio'}</h2>
+    <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)} – ${slotToTime(sSlot+sDur)}</div>
     <div class="field"><label>Autista</label><select id="f-drv">${drvOpts}</select></div>
     <div class="frow">
       <div class="field"><label>Giorno</label><select id="f-day" onchange="updSub()">${dayOpts}</select></div>
@@ -634,70 +823,60 @@ function openTripForm(id, day, slot, dur) {
     </div>
     <div class="field"><label>Durata</label><select id="f-dur" onchange="updSub()">${durOpts}</select></div>
     <div class="field"><label>Destinazione</label>
-      <input list="dl" id="f-dest" value="${t ? t.dest : ''}" placeholder="Cerca o scrivi…">
+      <input list="dl" id="f-dest" value="${t?t.dest:''}" placeholder="Cerca o scrivi…">
       <datalist id="dl">${destList}</datalist>
     </div>
     <div class="field"><label>Veicolo</label>
       <select id="f-veh">
         <option value="">-- Nessun veicolo --</option>
-        ${vehicles.map(v => `<option value="${v.id}" ${t && t.vehicle_id === v.id ? 'selected' : ''}>${v.name} (${v.type}) · ${v.plate}</option>`).join('')}
+        ${vehicles.map(v => `<option value="${v.id}" ${t&&t.vehicle_id===v.id?'selected':''}>${v.name} (${v.type}) · ${v.plate}</option>`).join('')}
       </select>
     </div>
-    <div class="field"><label>Nota</label><textarea id="f-note">${t ? t.note : ''}</textarea></div>
+    <div class="field"><label>Nota</label><textarea id="f-note">${t?t.note:''}</textarea></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn primary" onclick="saveTrip(${id || 'null'})">Salva</button>
+      <button class="btn primary" onclick="saveTrip(${id||'null'})">Salva</button>
     </div>`);
 }
-
 function updSub() {
   const el = document.getElementById('msub');
   if (el) el.textContent = `${DAYS_FULL[+document.getElementById('f-day').value]} · ${slotToTime(+document.getElementById('f-slot').value)} – ${slotToTime(+document.getElementById('f-slot').value + +document.getElementById('f-dur').value)}`;
 }
-
 async function saveTrip(id) {
-  const driver_id  = +document.getElementById('f-drv').value;
-  const day        = +document.getElementById('f-day').value;
+  const driver_id = +document.getElementById('f-drv').value;
+  const day = +document.getElementById('f-day').value;
   const start_slot = +document.getElementById('f-slot').value;
-  const duration   = +document.getElementById('f-dur').value;
-  const dest       = document.getElementById('f-dest').value.trim();
-  const note       = document.getElementById('f-note').value.trim();
+  const duration = +document.getElementById('f-dur').value;
+  const dest = document.getElementById('f-dest').value.trim();
+  const note = document.getElementById('f-note').value.trim();
   const vehicle_id = document.getElementById('f-veh').value ? +document.getElementById('f-veh').value : null;
   if (!dest) { toast('Inserisci una destinazione'); return; }
-
   const drv = drivers.find(d => d.id === driver_id);
   const veh = vehicle_id ? vehicles.find(v => v.id === vehicle_id) : null;
   let error;
-
   if (id) {
     ({ error } = await sb.from('trips').update({ driver_id, day, start_slot, duration, dest, note, vehicle_id }).eq('id', id));
-    if (!error) { Object.assign(trips.find(x => x.id === id), { driver_id, day, start_slot, duration, dest, note, vehicle_id }); }
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}${veh ? ' · ' + veh.name : ''}` });
+    if (!error) Object.assign(trips.find(x => x.id === id), { driver_id, day, start_slot, duration, dest, note, vehicle_id });
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}${veh?' · '+veh.name:''}` });
   } else {
     const { data, error: err } = await sb.from('trips').insert({ driver_id, day, start_slot, duration, dest, note, vehicle_id, week_offset: weekOffset, created_by: currentUser.name }).select().single();
     error = err;
     if (!error) trips.push(data);
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name} → ${dest}${veh ? ' · ' + veh.name : ''}` });
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name} → ${dest}${veh?' · '+veh.name:''}` });
   }
-
   if (error) { toast('Errore nel salvataggio'); return; }
-  closeModal();
-  renderTrips();
-  toast('Viaggio salvato');
+  closeModal(); renderTrips(); toast('Viaggio salvato');
 }
-
 function showTripModal(id) {
-  const t   = trips.find(x => x.id === id); if (!t) return;
+  const t = trips.find(x => x.id === id); if (!t) return;
   const drv = drivers.find(d => d.id === t.driver_id);
-
-  showModal(`
-    <h2>Dettaglio viaggio</h2>
+  showModal(`<h2>Dettaglio viaggio</h2>
     <div class="modal-sub" style="display:flex;align-items:center;gap:8px">
       <div style="width:10px;height:10px;border-radius:50%;background:${drv.color};flex-shrink:0"></div>
       <strong>${drv.name}</strong> &nbsp;·&nbsp; ${DAYS_FULL[t.day]} &nbsp;·&nbsp; ${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}
     </div>
     <div class="field"><label>Destinazione</label><div style="padding:4px 0">${t.dest}</div></div>
-    ${t.vehicle_id ? `<div class="field"><label>Veicolo</label><div style="padding:4px 0">🚛 ${vehicles.find(v=>v.id===t.vehicle_id)?.name || ''} · ${vehicles.find(v=>v.id===t.vehicle_id)?.plate || ''}</div></div>` : ''}
+    ${t.vehicle_id ? `<div class="field"><label>Veicolo</label><div style="padding:4px 0">🚛 ${vehicles.find(v=>v.id===t.vehicle_id)?.name||''} · ${vehicles.find(v=>v.id===t.vehicle_id)?.plate||''}</div></div>` : ''}
     ${t.note ? `<div class="field"><label>Nota</label><div style="padding:4px 0">${t.note}</div></div>` : ''}
     <div class="field"><label>Inserito da</label><div style="padding:4px 0;color:var(--text2)">${t.created_by}</div></div>
     <div class="btn-row">
@@ -705,12 +884,9 @@ function showTripModal(id) {
       <button class="btn" onclick="closeModal()">Chiudi</button>
     </div>`);
 }
-
 async function deleteTrip(id) {
-  const t   = trips.find(x => x.id === id);
-  const drv = drivers.find(d => d.id === t.driver_id);
-  showModal(`
-    <h2>Conferma eliminazione</h2>
+  const t = trips.find(x => x.id === id), drv = drivers.find(d => d.id === t.driver_id);
+  showModal(`<h2>Conferma eliminazione</h2>
     <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare il viaggio di <strong>${drv.name}</strong> verso <strong>${t.dest}</strong>?</p>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
@@ -718,119 +894,97 @@ async function deleteTrip(id) {
     </div>`);
 }
 async function _deleteTrip(id) {
-  const t   = trips.find(x => x.id === id);
-  const drv = drivers.find(d => d.id === t.driver_id);
+  const t = trips.find(x => x.id === id), drv = drivers.find(d => d.id === t.driver_id);
   const { error } = await sb.from('trips').delete().eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
   trips = trips.filter(x => x.id !== id);
   await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminato ${drv.name} → ${t.dest}` });
-  renderTrips();
-  toast('Viaggio eliminato');
+  renderTrips(); toast('Viaggio eliminato');
 }
 
 // ══════════════════════════════════════════════════════════
-//  PANNELLI LATERALI
+//  PANNELLI
 // ══════════════════════════════════════════════════════════
 function switchView(v) {
-  if ((v === 'log' || v === 'usr') && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
-  if ((v === 'addr' || v === 'drv' || v === 'veh') && !canEdit()) { toast('Accesso riservato agli operatori'); return; }
+  if ((v==='log'||v==='usr') && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
+  if ((v==='addr'||v==='drv'||v==='veh') && !canEdit()) { toast('Accesso riservato agli operatori'); return; }
   ['cal','addr','drv','veh','usr','log'].forEach(x => {
-    const el = document.getElementById('view-' + x);
-    el.style.display = x === v ? (x === 'cal' ? 'flex' : 'block') : 'none';
+    const el = document.getElementById('view-'+x);
+    el.style.display = x===v ? (x==='cal'?'flex':x==='veh'?'flex':'block') : 'none';
   });
-  document.querySelectorAll('.sb-icon').forEach((el, i) => el.classList.toggle('active', ['cal','addr','drv','veh','usr','log'][i] === v));
-  if (v === 'addr') renderDests();
-  if (v === 'drv')  renderDrivers();
-  if (v === 'veh')  renderVehicles();
-  if (v === 'usr')  renderUsers();
-  if (v === 'log')  renderLog();
+  document.querySelectorAll('.sb-icon').forEach((el,i) => el.classList.toggle('active', ['cal','addr','drv','veh','usr','log'][i]===v));
+  document.getElementById('week-nav-wrap').style.display = v==='cal' ? 'flex' : 'none';
+  if (v==='addr') renderDests();
+  if (v==='drv')  renderDrivers();
+  if (v==='veh')  renderVehPanel();
+  if (v==='usr')  renderUsers();
+  if (v==='log')  renderLog();
 }
 
+// ══════════════════════════════════════════════════════════
+//  DESTINAZIONI
+// ══════════════════════════════════════════════════════════
 function renderDests() {
-  const q = (document.getElementById('dest-search').value || '').toLowerCase();
+  const q = (document.getElementById('dest-search').value||'').toLowerCase();
   const filtered = dests.filter(d => d.toLowerCase().includes(q));
   document.getElementById('dest-list').innerHTML = filtered.map(d => `
     <div class="panel-row">
       <span style="flex:1">${d}</span>
-      ${canEdit() ? `
-        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDest('${d}')">✏️</span>
-        <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteDest('${d}')">🗑️</span>
-      ` : ''}
+      ${canEdit() ? `<span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDest('${d}')">✏️</span>
+      <span class="tag" style="cursor:pointer;background:var(--red-bg);color:var(--red)" onclick="deleteDest('${d}')">🗑️</span>` : ''}
     </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun risultato</div>';
 }
-
 async function addDestModal() {
   const name = prompt('Nuova destinazione:');
-  if (!name || !name.trim()) return;
+  if (!name||!name.trim()) return;
   const { error } = await sb.from('destinations').insert({ name: name.trim() });
   if (error) { toast('Errore o destinazione già presente'); return; }
-  dests.push(name.trim());
-  dests.sort();
-  renderDests();
-  toast('Destinazione aggiunta');
+  dests.push(name.trim()); dests.sort(); renderDests(); toast('Destinazione aggiunta');
 }
-
 async function editDest(oldName) {
   const newName = prompt('Modifica destinazione:', oldName);
-  if (!newName || !newName.trim() || newName === oldName) return;
+  if (!newName||!newName.trim()||newName===oldName) return;
   const { error } = await sb.from('destinations').update({ name: newName.trim() }).eq('name', oldName);
   if (error) { toast('Errore modifica'); return; }
-  const idx = dests.indexOf(oldName);
-  if (idx !== -1) dests[idx] = newName.trim();
-  dests.sort();
-  renderDests();
-  toast('Destinazione aggiornata');
+  const idx = dests.indexOf(oldName); if (idx!==-1) dests[idx]=newName.trim();
+  dests.sort(); renderDests(); toast('Destinazione aggiornata');
 }
-
 async function deleteDest(name) {
-  showModal(`
-    <h2>Conferma eliminazione</h2>
+  showModal(`<h2>Conferma eliminazione</h2>
     <p style="margin-bottom:20px;color:var(--text2)">Eliminare la destinazione <strong>${name}</strong>?</p>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn danger" onclick="closeModal();_deleteDest('${name}')">Elimina</button>
-    </div>`);
+    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
+    <button class="btn danger" onclick="closeModal();_deleteDest('${name}')">Elimina</button></div>`);
 }
 async function _deleteDest(name) {
   const { error } = await sb.from('destinations').delete().eq('name', name);
   if (error) { toast('Errore eliminazione'); return; }
-  dests = dests.filter(d => d !== name);
-  renderDests();
-  toast('Destinazione eliminata');
+  dests = dests.filter(d => d!==name); renderDests(); toast('Destinazione eliminata');
 }
 
+// ══════════════════════════════════════════════════════════
+//  AUTISTI
+// ══════════════════════════════════════════════════════════
 function renderDrivers() {
   document.getElementById('drv-list').innerHTML = drivers.map(d => `
     <div class="panel-row">
       <div class="dot" style="background:${d.color}"></div>
       <span style="flex:1;font-weight:500">${d.name}</span>
-      <span style="font-size:11px;color:var(--text2);margin-right:8px">${trips.filter(t => t.driver_id === d.id).length} viaggi</span>
-      ${canEdit() ? `
-        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDriver(${d.id})">✏️</span>
-        <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteDriver(${d.id})">🗑️</span>
-      ` : ''}
+      <span style="font-size:11px;color:var(--text2);margin-right:8px">${trips.filter(t=>t.driver_id===d.id).length} viaggi</span>
+      ${canEdit() ? `<span class="tag" style="cursor:pointer;margin-right:4px" onclick="editDriver(${d.id})">✏️</span>
+      <span class="tag" style="cursor:pointer;background:var(--red-bg);color:var(--red)" onclick="deleteDriver(${d.id})">🗑️</span>` : ''}
     </div>`).join('');
-  if (canEdit()) {
-    document.getElementById('drv-list').innerHTML += `
-      <button class="btn primary" style="width:100%;margin-top:12px" onclick="addDriverModal()">+ Nuovo autista</button>`;
-  }
+  if (canEdit()) document.getElementById('drv-list').innerHTML +=
+    `<button class="btn primary" style="width:100%;margin-top:12px" onclick="addDriverModal()">+ Nuovo autista</button>`;
 }
-
 function addDriverModal() { openDriverModal(null); }
-
+function editDriver(id) { openDriverModal(id); }
 function openDriverModal(id) {
-  const drv = id ? drivers.find(d => d.id === id) : null;
-  showModal(`
-    <h2>${drv ? 'Modifica autista' : 'Nuovo autista'}</h2>
-    <div class="field"><label>Nome</label>
-      <input id="fd-name" value="${drv ? drv.name : ''}" placeholder="es. Marco Rossi">
-    </div>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn primary" onclick="saveDriver(${id || 'null'})">Salva</button>
-    </div>`);
+  const drv = id ? drivers.find(d => d.id===id) : null;
+  showModal(`<h2>${drv?'Modifica autista':'Nuovo autista'}</h2>
+    <div class="field"><label>Nome</label><input id="fd-name" value="${drv?drv.name:''}" placeholder="es. Marco Rossi"></div>
+    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
+    <button class="btn primary" onclick="saveDriver(${id||'null'})">Salva</button></div>`);
 }
-
 async function saveDriver(id) {
   const name = document.getElementById('fd-name').value.trim();
   if (!name) { toast('Inserisci il nome'); return; }
@@ -840,46 +994,542 @@ async function saveDriver(id) {
   if (id) {
     const { error } = await sb.from('drivers').update({ name }).eq('id', id);
     if (error) { toast('Errore modifica'); return; }
-    drivers.find(d => d.id === id).name = name;
-    toast('Autista aggiornato');
+    drivers.find(d=>d.id===id).name = name; toast('Autista aggiornato');
   } else {
     const idx = drivers.length % colors.length;
-    const { data, error } = await sb.from('drivers').insert({
-      name, color: colors[idx], light: lights[idx], text_color: texts[idx], active: true
-    }).select().single();
+    const { data, error } = await sb.from('drivers').insert({ name, color:colors[idx], light:lights[idx], text_color:texts[idx], active:true }).select().single();
     if (error) { toast('Errore aggiunta autista'); return; }
-    drivers.push(data);
-    toast('Autista aggiunto');
+    drivers.push(data); toast('Autista aggiunto');
   }
-  closeModal();
-  renderDrivers();
-  renderLegend();
-  renderTrips();
+  closeModal(); renderDrivers(); renderLegend(); renderTrips();
 }
-
-function editDriver(id) { openDriverModal(id); }
-
 async function deleteDriver(id) {
-  const drv = drivers.find(d => d.id === id);
-  showModal(`
-    <h2>Conferma eliminazione</h2>
+  const drv = drivers.find(d=>d.id===id);
+  showModal(`<h2>Conferma eliminazione</h2>
     <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare l'autista <strong>${drv.name}</strong>?<br>Verranno eliminati anche tutti i suoi viaggi!</p>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn danger" onclick="closeModal();_deleteDriver(${id})">Elimina</button>
-    </div>`);
+    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
+    <button class="btn danger" onclick="closeModal();_deleteDriver(${id})">Elimina</button></div>`);
 }
 async function _deleteDriver(id) {
-  const { error } = await sb.from('drivers').update({ active: false }).eq('id', id);
+  const { error } = await sb.from('drivers').update({ active:false }).eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
-  drivers = drivers.filter(d => d.id !== id);
-  trips   = trips.filter(t => t.driver_id !== id);
-  renderDrivers();
-  renderLegend();
-  renderCal();
-  toast('Autista eliminato');
+  drivers = drivers.filter(d=>d.id!==id); trips = trips.filter(t=>t.driver_id!==id);
+  renderDrivers(); renderLegend(); renderCal(); toast('Autista eliminato');
 }
 
+// ══════════════════════════════════════════════════════════
+//  GESTIONE VEICOLI — PANNELLO COMPLETO
+// ══════════════════════════════════════════════════════════
+function switchVehTab(tab) {
+  currentVehTab = tab;
+  ['fleet','scad','storia','fermi'].forEach(t => {
+    document.getElementById('vtab-'+t).classList.toggle('active', t===tab);
+  });
+  const addBtn = document.getElementById('veh-add-btn');
+  const addLabels = { fleet:'+ Aggiungi veicolo', scad:'+ Nuova scadenza', storia:'+ Aggiungi intervento', fermi:'+ Registra fermo' };
+  addBtn.textContent = addLabels[tab] || '+ Aggiungi';
+  renderVehPanel();
+}
+
+function vehAddAction() {
+  if (currentVehTab === 'fleet')   openVehicleModal(null);
+  if (currentVehTab === 'scad')    openDeadlineModal(null, null);
+  if (currentVehTab === 'storia')  openHistoryModal(null, null);
+  if (currentVehTab === 'fermi')   openStopModal(null, null);
+}
+
+async function renderVehPanel() {
+  await loadVehicleData();
+  checkDeadlineNotifications();
+  const body = document.getElementById('veh-body');
+  if (currentVehTab === 'fleet')  renderFleet(body);
+  if (currentVehTab === 'scad')   renderScadenze(body);
+  if (currentVehTab === 'storia') renderStoria(body);
+  if (currentVehTab === 'fermi')  renderFermi(body);
+}
+
+// ── FLEET ──
+function getVehicleStatusBadge(vId) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const vDl = deadlines.filter(d => d.vehicle_id === vId && !d.completed);
+  const statuses = vDl.map(d => getDeadlineStatus(d));
+  const isFermo = vehicleStops.some(s => {
+    const sd = new Date(s.start_date), ed = new Date(s.end_date);
+    return s.vehicle_id === vId && sd <= today && ed >= today;
+  });
+  if (isFermo) return `<span class="veh-status fermo">🚫 Fermo</span>`;
+  if (statuses.includes('scad'))   return `<span class="veh-status crit">🔴 Scaduto</span>`;
+  if (statuses.includes('warn7'))  return `<span class="veh-status alert">🟠 Urgente</span>`;
+  if (statuses.includes('warn30')) return `<span class="veh-status warn">🟡 In scadenza</span>`;
+  return `<span class="veh-status ok">✅ OK</span>`;
+}
+
+function renderFleet(body) {
+  if (!vehicles.length) { body.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">Nessun veicolo</div>'; return; }
+  body.innerHTML = vehicles.map(v => {
+    const vDl = deadlines.filter(d => d.vehicle_id === v.id && !d.completed);
+    const nextDl = vDl.sort((a,b) => new Date(a.deadline_date)-new Date(b.deadline_date))[0];
+    const tripCount = trips.filter(t => t.vehicle_id === v.id).length;
+    return `<div class="veh-card" id="vcard-${v.id}">
+      <div class="veh-card-head" onclick="toggleVehCard(${v.id})">
+        <div class="veh-icon">🚛</div>
+        <div class="veh-info">
+          <div class="veh-name">${v.name} <span style="font-size:11px;color:var(--text2);font-weight:400">${v.plate}</span></div>
+          <div class="veh-sub">${v.type}${v.brand?' · '+v.brand:''}${v.model?' '+v.model:''}${v.year?' ('+v.year+')':''}${v.km?' · '+v.km.toLocaleString()+' km':''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          ${getVehicleStatusBadge(v.id)}
+          <span style="color:var(--text3);font-size:11px">›</span>
+        </div>
+      </div>
+      <div class="veh-card-body">
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px">
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Viaggi questo mese</div><div style="font-weight:600">${tripCount}</div></div>
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Prossima scadenza</div><div style="font-weight:600">${nextDl ? nextDl.type+' · '+fmtDateShort(nextDl.deadline_date) : '—'}</div></div>
+          ${v.km ? `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Chilometri</div><div style="font-weight:600">${v.km.toLocaleString()} km</div></div>` : ''}
+          ${v.notes ? `<div style="flex:1"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Note</div><div style="font-size:12px">${v.notes}</div></div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${canEdit() ? `
+          <button class="btn sm" onclick="openVehicleModal(${v.id})">✏️ Modifica</button>
+          <button class="btn sm" onclick="openDeadlineModal(null,${v.id})">📅 + Scadenza</button>
+          <button class="btn sm" onclick="openHistoryModal(null,${v.id})">🔧 + Intervento</button>
+          <button class="btn sm" onclick="openStopModal(null,${v.id})">🚫 + Fermo</button>
+          <button class="btn sm" onclick="openKmModal(${v.id})">📍 Aggiorna KM</button>
+          <button class="btn sm danger" onclick="deleteVehicle(${v.id})">🗑️ Elimina</button>
+          ` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleVehCard(id) {
+  document.getElementById('vcard-'+id).classList.toggle('open');
+}
+
+// ── SCADENZE ──
+function renderScadenze(body) {
+  const TYPES = ['Revisione','Assicurazione','Tagliando','Bollo','Cronotachigrafo','Estintore','Cinture','Altro'];
+
+  // Raggruppa per veicolo
+  const allDl = [...deadlines].sort((a,b) => new Date(a.deadline_date) - new Date(b.deadline_date));
+
+  if (!allDl.length) {
+    body.innerHTML = `<div style="color:var(--text3);font-size:12px;padding:8px">Nessuna scadenza registrata. Clicca "+ Nuova scadenza" per aggiungerne una.</div>`;
+    return;
+  }
+
+  // Filtro per stato
+  body.innerHTML = `
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn sm active" id="scad-filter-all"  onclick="setScadFilter('all')">Tutte</button>
+      <button class="btn sm"        id="scad-filter-crit" onclick="setScadFilter('crit')" style="color:var(--red)">🔴 Critiche</button>
+      <button class="btn sm"        id="scad-filter-warn" onclick="setScadFilter('warn')" style="color:var(--orange)">🟠 Urgenti</button>
+      <button class="btn sm"        id="scad-filter-30"   onclick="setScadFilter('30')"  style="color:var(--yellow)">🟡 30gg</button>
+      <button class="btn sm"        id="scad-filter-done" onclick="setScadFilter('done')">✅ Completate</button>
+    </div>
+    <div id="scad-table-wrap"></div>`;
+
+  window._scadFilter = window._scadFilter || 'all';
+  renderScadTable();
+}
+
+function setScadFilter(f) {
+  window._scadFilter = f;
+  ['all','crit','warn','30','done'].forEach(x => {
+    const btn = document.getElementById('scad-filter-'+x);
+    if (btn) btn.classList.toggle('active', x===f);
+  });
+  renderScadTable();
+}
+
+function renderScadTable() {
+  const wrap = document.getElementById('scad-table-wrap');
+  if (!wrap) return;
+  const f = window._scadFilter || 'all';
+  let filtered = deadlines.filter(dl => {
+    const s = getDeadlineStatus(dl);
+    if (f === 'all')  return !dl.completed;
+    if (f === 'crit') return s === 'scad';
+    if (f === 'warn') return s === 'warn7';
+    if (f === '30')   return s === 'warn30';
+    if (f === 'done') return dl.completed;
+    return true;
+  }).sort((a,b) => new Date(a.deadline_date) - new Date(b.deadline_date));
+
+  if (!filtered.length) { wrap.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">Nessuna scadenza in questa categoria.</div>'; return; }
+
+  const pillLabel = { ok:'OK', warn30:'30gg', warn7:'7gg', scad:'Scaduto', done:'Fatto' };
+  wrap.innerHTML = `<table class="scad-table">
+    <thead><tr>
+      <th>Veicolo</th><th>Tipo</th><th>Scadenza</th><th>Km limite</th><th>Stato</th><th>Note</th>
+      ${canEdit() ? '<th></th>' : ''}
+    </tr></thead>
+    <tbody>
+    ${filtered.map(dl => {
+      const v = vehicles.find(x => x.id === dl.vehicle_id);
+      const s = getDeadlineStatus(dl);
+      return `<tr>
+        <td><strong>${v ? v.name : '?'}</strong><div style="font-size:10px;color:var(--text2)">${v ? v.plate : ''}</div></td>
+        <td>${dl.type}</td>
+        <td>${fmtDateShort(dl.deadline_date)}<div style="font-size:10px;color:var(--text2)">${getDeadlineDaysText(dl)}</div></td>
+        <td>${dl.km_deadline ? dl.km_deadline.toLocaleString()+' km' : '—'}</td>
+        <td><span class="scad-pill ${s}">${pillLabel[s]||s}</span></td>
+        <td style="font-size:11px;color:var(--text2);max-width:140px">${dl.notes||''}</td>
+        ${canEdit() ? `<td style="white-space:nowrap">
+          ${!dl.completed ? `<button class="btn sm success" style="margin-right:4px" onclick="completeDeadline(${dl.id})" title="Segna come completato">✓</button>` : ''}
+          <button class="btn sm" style="margin-right:4px" onclick="openDeadlineModal(${dl.id},${dl.vehicle_id})">✏️</button>
+          <button class="btn sm danger" onclick="deleteDeadline(${dl.id})">🗑️</button>
+        </td>` : ''}
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+}
+
+// ── STORICO INTERVENTI ──
+function renderStoria(body) {
+  if (!vehicleHist.length) {
+    body.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">Nessun intervento registrato.</div>';
+    return;
+  }
+
+  const typeIcon = { Tagliando:'🔧', Riparazione:'🛠️', Revisione:'📋', Gomme:'🔄', Freni:'🛑', Carrozzeria:'🎨', Elettrico:'⚡', Altro:'📝' };
+
+  // Raggruppa per veicolo
+  const vehWithHist = vehicles.filter(v => vehicleHist.some(h => h.vehicle_id === v.id));
+
+  body.innerHTML = `<div style="margin-bottom:12px">
+    <select id="hist-veh-filter" onchange="renderStoriaFiltered()" style="border:0.5px solid var(--border2);border-radius:var(--radius);padding:6px 10px;font-size:12px;background:var(--bg2);color:var(--text)">
+      <option value="">Tutti i veicoli</option>
+      ${vehWithHist.map(v => `<option value="${v.id}">${v.name} · ${v.plate}</option>`).join('')}
+    </select>
+  </div>
+  <div id="hist-list-body"></div>`;
+  renderStoriaFiltered();
+}
+
+function renderStoriaFiltered() {
+  const vId = document.getElementById('hist-veh-filter')?.value;
+  const filtered = vehicleHist.filter(h => !vId || h.vehicle_id === +vId);
+  const typeIcon = { Tagliando:'🔧', Riparazione:'🛠️', Revisione:'📋', Gomme:'🔄', Freni:'🛑', Carrozzeria:'🎨', Elettrico:'⚡', Altro:'📝' };
+  const listEl = document.getElementById('hist-list-body');
+  if (!listEl) return;
+  if (!filtered.length) { listEl.innerHTML = '<div style="color:var(--text3);font-size:12px">Nessun intervento.</div>'; return; }
+  listEl.innerHTML = filtered.map(h => {
+    const v = vehicles.find(x => x.id === h.vehicle_id);
+    const icon = typeIcon[h.type] || '📝';
+    return `<div class="hist-row">
+      <div class="hist-icon">${icon}</div>
+      <div class="hist-body">
+        <div class="hist-date">${fmtDateShort(h.date)} · <strong>${v?v.name:'?'}</strong> · ${h.type}${h.workshop?' · '+h.workshop:''}</div>
+        <div class="hist-desc">${h.description}</div>
+        <div class="hist-meta">${h.km ? h.km.toLocaleString()+' km' : ''} ${h.cost ? '<span class="hist-cost">€ '+Number(h.cost).toLocaleString('it-IT',{minimumFractionDigits:2})+'</span>' : ''} · da ${h.created_by}</div>
+      </div>
+      ${canEdit() ? `<div style="flex-shrink:0;display:flex;gap:4px">
+        <button class="btn sm" onclick="openHistoryModal(${h.id},${h.vehicle_id})">✏️</button>
+        <button class="btn sm danger" onclick="deleteHistory(${h.id})">🗑️</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── FERMI VEICOLO ──
+function renderFermi(body) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const activeFermi = vehicleStops.filter(s => { const ed = new Date(s.end_date); return ed >= today; });
+  const pastFermi   = vehicleStops.filter(s => { const ed = new Date(s.end_date); return ed < today; });
+
+  let html = '';
+  if (activeFermi.length) {
+    html += `<div style="font-size:10px;font-weight:600;color:var(--red);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Fermi attivi</div>`;
+    html += activeFermi.map(s => {
+      const v = vehicles.find(x => x.id === s.vehicle_id);
+      return `<div class="fermo-row" style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1">
+          <div style="font-weight:500">🚫 ${v?v.name:'?'} <span style="font-weight:400;color:var(--text2)">· ${s.reason}</span></div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${fmtDateShort(s.start_date)} → ${fmtDateShort(s.end_date)}${s.notes?' · '+s.notes:''}</div>
+        </div>
+        ${canEdit() ? `<div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="btn sm" onclick="openStopModal(${s.id},${s.vehicle_id})">✏️</button>
+          <button class="btn sm danger" onclick="deleteStop(${s.id})">🗑️</button>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+  }
+  if (pastFermi.length) {
+    html += `<div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px">Storico fermi</div>`;
+    html += pastFermi.map(s => {
+      const v = vehicles.find(x => x.id === s.vehicle_id);
+      return `<div class="panel-row" style="opacity:.7">
+        <div style="flex:1">
+          <div style="font-weight:500">${v?v.name:'?'} · ${s.reason}</div>
+          <div style="font-size:11px;color:var(--text2)">${fmtDateShort(s.start_date)} → ${fmtDateShort(s.end_date)}${s.notes?' · '+s.notes:''}</div>
+        </div>
+        ${canEdit() ? `<button class="btn sm danger" onclick="deleteStop(${s.id})">🗑️</button>` : ''}
+      </div>`;
+    }).join('');
+  }
+  if (!html) html = '<div style="color:var(--text3);font-size:12px;padding:8px">Nessun fermo registrato.</div>';
+  body.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════
+//  MODAL VEICOLO (base)
+// ══════════════════════════════════════════════════════════
+function openVehicleModal(id) {
+  const v = id ? vehicles.find(x => x.id === id) : null;
+  const typeOpts = ['Camion','Furgone','Auto','Minibus','Altro'].map(t =>
+    `<option value="${t}" ${v&&v.type===t?'selected':''}>${t}</option>`).join('');
+  showModal(`<h2>${v?'Modifica veicolo':'Nuovo veicolo'}</h2>
+    <div class="frow">
+      <div class="field"><label>Nome</label><input id="fv-name" value="${v?v.name:''}" placeholder="es. Scania 450"></div>
+      <div class="field"><label>Tipo</label><select id="fv-type">${typeOpts}</select></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Marca</label><input id="fv-brand" value="${v&&v.brand?v.brand:''}" placeholder="es. Scania"></div>
+      <div class="field"><label>Modello</label><input id="fv-model" value="${v&&v.model?v.model:''}" placeholder="es. R450"></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Targa</label><input id="fv-plate" value="${v?v.plate:''}" placeholder="es. AB123CD" style="text-transform:uppercase"></div>
+      <div class="field"><label>Anno</label><input id="fv-year" type="number" value="${v&&v.year?v.year:''}" placeholder="es. 2020"></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>KM attuali</label><input id="fv-km" type="number" value="${v&&v.km?v.km:''}" placeholder="es. 125000"></div>
+    </div>
+    <div class="field"><label>Note</label><textarea id="fv-notes">${v&&v.notes?v.notes:''}</textarea></div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveVehicle(${id||'null'})">Salva</button>
+    </div>`);
+}
+async function saveVehicle(id) {
+  const name  = document.getElementById('fv-name').value.trim();
+  const type  = document.getElementById('fv-type').value;
+  const plate = document.getElementById('fv-plate').value.trim().toUpperCase();
+  const brand = document.getElementById('fv-brand').value.trim();
+  const model = document.getElementById('fv-model').value.trim();
+  const year  = document.getElementById('fv-year').value ? +document.getElementById('fv-year').value : null;
+  const km    = document.getElementById('fv-km').value ? +document.getElementById('fv-km').value : null;
+  const notes = document.getElementById('fv-notes').value.trim();
+  if (!name) { toast('Inserisci il nome del veicolo'); return; }
+  if (!plate) { toast('Inserisci la targa'); return; }
+  const payload = { name, type, plate, brand, model, year, km, notes };
+  if (id) {
+    const { error } = await sb.from('vehicles').update(payload).eq('id', id);
+    if (error) { toast('Errore modifica'); return; }
+    Object.assign(vehicles.find(x => x.id === id), payload);
+    toast('Veicolo aggiornato');
+  } else {
+    const { data, error } = await sb.from('vehicles').insert({ ...payload, active: true }).select().single();
+    if (error) { toast('Errore: targa già presente o dati non validi'); return; }
+    vehicles.push(data); toast('Veicolo aggiunto');
+  }
+  closeModal(); renderVehPanel();
+}
+async function deleteVehicle(id) {
+  const v = vehicles.find(x => x.id === id);
+  showModal(`<h2>Conferma eliminazione</h2>
+    <p style="margin-bottom:20px;color:var(--text2)">Eliminare il veicolo <strong>${v.name}</strong> (${v.plate})?</p>
+    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
+    <button class="btn danger" onclick="closeModal();_deleteVehicle(${id})">Elimina</button></div>`);
+}
+async function _deleteVehicle(id) {
+  const { error } = await sb.from('vehicles').update({ active: false }).eq('id', id);
+  if (error) { toast('Errore eliminazione'); return; }
+  vehicles = vehicles.filter(x => x.id !== id); renderVehPanel(); toast('Veicolo eliminato');
+}
+
+// Modal aggiorna KM
+function openKmModal(id) {
+  const v = vehicles.find(x => x.id === id);
+  showModal(`<h2>Aggiorna chilometraggio</h2>
+    <div class="modal-sub">${v.name} · ${v.plate}</div>
+    <div class="field"><label>KM attuali</label><input id="fkm-val" type="number" value="${v.km||0}" placeholder="es. 145000"></div>
+    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
+    <button class="btn primary" onclick="saveKm(${id})">Salva</button></div>`);
+}
+async function saveKm(id) {
+  const km = +document.getElementById('fkm-val').value;
+  const { error } = await sb.from('vehicles').update({ km }).eq('id', id);
+  if (error) { toast('Errore'); return; }
+  vehicles.find(x => x.id === id).km = km;
+  closeModal(); renderVehPanel(); toast('Chilometri aggiornati');
+}
+
+// ══════════════════════════════════════════════════════════
+//  MODAL SCADENZE
+// ══════════════════════════════════════════════════════════
+function openDeadlineModal(id, preVehId) {
+  const dl = id ? deadlines.find(x => x.id === id) : null;
+  const TYPES = ['Revisione','Assicurazione','Tagliando','Bollo','Cronotachigrafo','Estintore','Cinture','Patente autista','Altro'];
+  const typeOpts = TYPES.map(t => `<option value="${t}" ${dl&&dl.type===t?'selected':''}>${t}</option>`).join('');
+  const vehOpts = vehicles.map(v => `<option value="${v.id}" ${(dl&&dl.vehicle_id===v.id)||(preVehId&&v.id===preVehId)?'selected':''}>${v.name} · ${v.plate}</option>`).join('');
+  showModal(`<h2>${dl?'Modifica scadenza':'Nuova scadenza'}</h2>
+    <div class="field"><label>Veicolo</label><select id="fdl-veh">${vehOpts}</select></div>
+    <div class="frow">
+      <div class="field"><label>Tipo scadenza</label><select id="fdl-type">${typeOpts}</select></div>
+      <div class="field"><label>Data scadenza</label><input id="fdl-date" type="date" value="${dl?dl.deadline_date:''}"></div>
+    </div>
+    <div class="field"><label>KM limite (opzionale)</label><input id="fdl-km" type="number" value="${dl&&dl.km_deadline?dl.km_deadline:''}" placeholder="es. 150000"></div>
+    <div class="field"><label>Note</label><textarea id="fdl-notes">${dl&&dl.notes?dl.notes:''}</textarea></div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveDeadline(${id||'null'})">Salva</button>
+    </div>`);
+}
+async function saveDeadline(id) {
+  const vehicle_id   = +document.getElementById('fdl-veh').value;
+  const type         = document.getElementById('fdl-type').value;
+  const deadline_date = document.getElementById('fdl-date').value;
+  const km_deadline  = document.getElementById('fdl-km').value ? +document.getElementById('fdl-km').value : null;
+  const notes        = document.getElementById('fdl-notes').value.trim();
+  if (!deadline_date) { toast('Inserisci la data di scadenza'); return; }
+  if (id) {
+    const { error } = await sb.from('vehicle_deadlines').update({ vehicle_id, type, deadline_date, km_deadline, notes }).eq('id', id);
+    if (error) { toast('Errore'); return; }
+    Object.assign(deadlines.find(x => x.id === id), { vehicle_id, type, deadline_date, km_deadline, notes });
+    toast('Scadenza aggiornata');
+  } else {
+    const { data, error } = await sb.from('vehicle_deadlines').insert({ vehicle_id, type, deadline_date, km_deadline, notes, completed: false }).select().single();
+    if (error) { toast('Errore inserimento'); return; }
+    deadlines.push(data); toast('Scadenza aggiunta');
+  }
+  closeModal(); renderVehPanel();
+}
+async function completeDeadline(id) {
+  const today = new Date().toISOString().split('T')[0];
+  const { error } = await sb.from('vehicle_deadlines').update({ completed: true, completed_at: today }).eq('id', id);
+  if (error) { toast('Errore'); return; }
+  const dl = deadlines.find(x => x.id === id);
+  if (dl) { dl.completed = true; dl.completed_at = today; }
+  renderVehPanel(); checkDeadlineNotifications(); toast('Scadenza completata ✅');
+}
+async function deleteDeadline(id) {
+  const { error } = await sb.from('vehicle_deadlines').delete().eq('id', id);
+  if (error) { toast('Errore'); return; }
+  deadlines = deadlines.filter(x => x.id !== id);
+  renderVehPanel(); checkDeadlineNotifications(); toast('Scadenza eliminata');
+}
+
+// ══════════════════════════════════════════════════════════
+//  MODAL STORICO INTERVENTI
+// ══════════════════════════════════════════════════════════
+function openHistoryModal(id, preVehId) {
+  const h = id ? vehicleHist.find(x => x.id === id) : null;
+  const HTYPES = ['Tagliando','Riparazione','Revisione','Gomme','Freni','Carrozzeria','Elettrico','Altro'];
+  const typeOpts = HTYPES.map(t => `<option value="${t}" ${h&&h.type===t?'selected':''}>${t}</option>`).join('');
+  const vehOpts = vehicles.map(v => `<option value="${v.id}" ${(h&&h.vehicle_id===v.id)||(preVehId&&v.id===preVehId)?'selected':''}>${v.name} · ${v.plate}</option>`).join('');
+  const today = new Date().toISOString().split('T')[0];
+  showModal(`<h2>${h?'Modifica intervento':'Nuovo intervento'}</h2>
+    <div class="frow">
+      <div class="field"><label>Veicolo</label><select id="fh-veh">${vehOpts}</select></div>
+      <div class="field"><label>Tipo</label><select id="fh-type">${typeOpts}</select></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Data</label><input id="fh-date" type="date" value="${h?h.date:today}"></div>
+      <div class="field"><label>KM</label><input id="fh-km" type="number" value="${h&&h.km?h.km:''}" placeholder="es. 125000"></div>
+    </div>
+    <div class="field"><label>Descrizione</label><textarea id="fh-desc">${h?h.description:''}</textarea></div>
+    <div class="frow">
+      <div class="field"><label>Officina</label><input id="fh-workshop" value="${h&&h.workshop?h.workshop:''}" placeholder="es. Officina Rossi"></div>
+      <div class="field"><label>Costo (€)</label><input id="fh-cost" type="number" step="0.01" value="${h&&h.cost?h.cost:''}" placeholder="es. 350.00"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveHistory(${id||'null'})">Salva</button>
+    </div>`);
+}
+async function saveHistory(id) {
+  const vehicle_id  = +document.getElementById('fh-veh').value;
+  const type        = document.getElementById('fh-type').value;
+  const date        = document.getElementById('fh-date').value;
+  const km          = document.getElementById('fh-km').value ? +document.getElementById('fh-km').value : null;
+  const description = document.getElementById('fh-desc').value.trim();
+  const workshop    = document.getElementById('fh-workshop').value.trim();
+  const cost        = document.getElementById('fh-cost').value ? +document.getElementById('fh-cost').value : null;
+  if (!description) { toast('Inserisci la descrizione'); return; }
+  if (!date) { toast('Inserisci la data'); return; }
+  const veh = vehicles.find(v => v.id === vehicle_id);
+  if (id) {
+    const { error } = await sb.from('vehicle_history').update({ vehicle_id, type, date, km, description, workshop, cost }).eq('id', id);
+    if (error) { toast('Errore'); return; }
+    Object.assign(vehicleHist.find(x => x.id === id), { vehicle_id, type, date, km, description, workshop, cost });
+    toast('Intervento aggiornato');
+  } else {
+    const { data, error } = await sb.from('vehicle_history').insert({ vehicle_id, type, date, km, description, workshop, cost, created_by: currentUser.name }).select().single();
+    if (error) { toast('Errore inserimento'); return; }
+    vehicleHist.unshift(data);
+    // Aggiorna km veicolo se specificato
+    if (km) { await sb.from('vehicles').update({ km }).eq('id', vehicle_id); if(veh) veh.km = km; }
+    toast('Intervento registrato');
+  }
+  await sb.from('activity_log').insert({ username: currentUser.name, action: `Intervento ${type} su ${veh?veh.name:'?'} · ${description.substring(0,50)}` });
+  closeModal(); renderVehPanel();
+}
+async function deleteHistory(id) {
+  const { error } = await sb.from('vehicle_history').delete().eq('id', id);
+  if (error) { toast('Errore'); return; }
+  vehicleHist = vehicleHist.filter(x => x.id !== id);
+  renderVehPanel(); toast('Intervento eliminato');
+}
+
+// ══════════════════════════════════════════════════════════
+//  MODAL FERMI VEICOLO
+// ══════════════════════════════════════════════════════════
+function openStopModal(id, preVehId) {
+  const s = id ? vehicleStops.find(x => x.id === id) : null;
+  const vehOpts = vehicles.map(v => `<option value="${v.id}" ${(s&&s.vehicle_id===v.id)||(preVehId&&v.id===preVehId)?'selected':''}>${v.name} · ${v.plate}</option>`).join('');
+  const today = new Date().toISOString().split('T')[0];
+  showModal(`<h2>${s?'Modifica fermo':'Registra fermo veicolo'}</h2>
+    <div class="field"><label>Veicolo</label><select id="fs-veh">${vehOpts}</select></div>
+    <div class="field"><label>Motivo</label>
+      <select id="fs-reason">
+        ${['Guasto','Manutenzione programmata','Revisione','Incidente','Fermo amministrativo','Altro'].map(r => `<option value="${r}" ${s&&s.reason===r?'selected':''}>${r}</option>`).join('')}
+      </select>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Dal</label><input id="fs-start" type="date" value="${s?s.start_date:today}"></div>
+      <div class="field"><label>Al</label><input id="fs-end" type="date" value="${s?s.end_date:today}"></div>
+    </div>
+    <div class="field"><label>Note</label><textarea id="fs-notes">${s&&s.notes?s.notes:''}</textarea></div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveStop(${id||'null'})">Salva</button>
+    </div>`);
+}
+async function saveStop(id) {
+  const vehicle_id = +document.getElementById('fs-veh').value;
+  const reason     = document.getElementById('fs-reason').value;
+  const start_date = document.getElementById('fs-start').value;
+  const end_date   = document.getElementById('fs-end').value;
+  const notes      = document.getElementById('fs-notes').value.trim();
+  if (!start_date || !end_date) { toast('Inserisci le date'); return; }
+  if (new Date(end_date) < new Date(start_date)) { toast('La data fine deve essere dopo la data inizio'); return; }
+  const veh = vehicles.find(v => v.id === vehicle_id);
+  if (id) {
+    const { error } = await sb.from('vehicle_stops').update({ vehicle_id, reason, start_date, end_date, notes }).eq('id', id);
+    if (error) { toast('Errore'); return; }
+    Object.assign(vehicleStops.find(x => x.id === id), { vehicle_id, reason, start_date, end_date, notes });
+    toast('Fermo aggiornato');
+  } else {
+    const { data, error } = await sb.from('vehicle_stops').insert({ vehicle_id, reason, start_date, end_date, notes, created_by: currentUser.name }).select().single();
+    if (error) { toast('Errore inserimento'); return; }
+    vehicleStops.unshift(data); toast('Fermo registrato');
+  }
+  await sb.from('activity_log').insert({ username: currentUser.name, action: `Fermo ${veh?veh.name:'?'} · ${reason} (${start_date} → ${end_date})` });
+  closeModal(); renderVehPanel();
+}
+async function deleteStop(id) {
+  const { error } = await sb.from('vehicle_stops').delete().eq('id', id);
+  if (error) { toast('Errore'); return; }
+  vehicleStops = vehicleStops.filter(x => x.id !== id);
+  renderVehPanel(); toast('Fermo eliminato');
+}
+
+// ══════════════════════════════════════════════════════════
+//  LOG
+// ══════════════════════════════════════════════════════════
 async function renderLog() {
   const { data } = await sb.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100);
   logs = data || [];
@@ -891,6 +1541,72 @@ async function renderLog() {
 }
 
 // ══════════════════════════════════════════════════════════
+//  UTENTI
+// ══════════════════════════════════════════════════════════
+let usersList = [];
+async function renderUsers() {
+  document.getElementById('usr-list').innerHTML = '<div style="color:var(--text3);font-size:12px">Caricamento…</div>';
+  const { data } = await sb.from('user_roles').select('*').order('name');
+  usersList = data || [];
+  const roleLabel = { admin:'Amministratore', operatore:'Operatore', viewer:'Visualizzatore' };
+  const roleClass = { admin:'role-admin', operatore:'role-operatore', viewer:'role-viewer' };
+  document.getElementById('usr-list').innerHTML = usersList.map(u => `
+    <div class="panel-row">
+      <div style="flex:1">
+        <div style="font-weight:500">${u.name}</div>
+        <div style="font-size:11px;color:var(--text2)">${u.email}</div>
+      </div>
+      <span class="role-badge ${roleClass[u.role]}" style="margin-right:8px">${roleLabel[u.role]}</span>
+      <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openUserModal('${u.email}')">✏️</span>
+      <span class="tag" style="cursor:pointer;background:var(--red-bg);color:var(--red)" onclick="confirmDeleteUser('${u.email}','${u.name}')">🗑️</span>
+    </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun utente</div>';
+}
+function openUserModal(email) {
+  const u = email ? usersList.find(x => x.email === email) : null;
+  const roleOpts = ['admin','operatore','viewer'].map(r => {
+    const labels = { admin:'Amministratore', operatore:'Operatore', viewer:'Visualizzatore' };
+    return `<option value="${r}" ${u&&u.role===r?'selected':''}>${labels[r]}</option>`;
+  }).join('');
+  showModal(`<h2>${u?'Modifica utente':'Nuovo utente'}</h2>
+    ${!u?'<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">⚠️ Crea prima l\'utente su Supabase → Authentication → Add user, poi aggiungilo qui.</div>':''}
+    <div class="field"><label>Nome</label><input id="fu-name" value="${u?u.name:''}" placeholder="es. Marco Rossi"></div>
+    <div class="field"><label>Email</label><input id="fu-email" value="${u?u.email:''}" placeholder="email@esempio.com" ${u?'readonly style="opacity:.6"':''}></div>
+    <div class="field"><label>Ruolo</label><select id="fu-role">${roleOpts}</select></div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveUser('${email||''}')">Salva</button>
+    </div>`);
+}
+async function saveUser(existingEmail) {
+  const name  = document.getElementById('fu-name').value.trim();
+  const email = existingEmail || document.getElementById('fu-email').value.trim().toLowerCase();
+  const role  = document.getElementById('fu-role').value;
+  if (!name) { toast('Inserisci il nome'); return; }
+  if (!email) { toast('Inserisci la email'); return; }
+  if (existingEmail) {
+    const { error } = await sb.from('user_roles').update({ name, role }).eq('email', email);
+    if (error) { toast('Errore aggiornamento'); return; }
+    toast('Utente aggiornato');
+  } else {
+    const { error } = await sb.from('user_roles').insert({ email, name, role });
+    if (error) { toast('Errore: email già presente o non valida'); return; }
+    toast('Utente aggiunto');
+  }
+  closeModal(); renderUsers();
+}
+function confirmDeleteUser(email, name) {
+  showModal(`<h2>Conferma eliminazione</h2>
+    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare l'accesso di <strong>${name}</strong> (${email})?</p>
+    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
+    <button class="btn danger" onclick="deleteUser('${email}')">Elimina accesso</button></div>`);
+}
+async function deleteUser(email) {
+  const { error } = await sb.from('user_roles').delete().eq('email', email);
+  if (error) { toast('Errore eliminazione'); return; }
+  closeModal(); renderUsers(); toast('Accesso rimosso');
+}
+
+// ══════════════════════════════════════════════════════════
 //  UTILS
 // ══════════════════════════════════════════════════════════
 function showModal(html) {
@@ -898,7 +1614,6 @@ function showModal(html) {
     `<div class="modal-bg" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()">${html}</div></div>`;
 }
 function closeModal() { document.getElementById('modal-area').innerHTML = ''; }
-
 function toast(msg) {
   const t = document.createElement('div');
   t.className = 'toast'; t.textContent = msg; t.style.opacity = '0';
@@ -909,188 +1624,7 @@ function toast(msg) {
   });
 }
 
-// ══════════════════════════════════════════════════════════
-//  VEICOLI
-// ══════════════════════════════════════════════════════════
-function renderVehicles() {
-  document.getElementById('veh-list').innerHTML = vehicles.map(v => `
-    <div class="panel-row">
-      <span style="font-size:16px">🚛</span>
-      <div style="flex:1">
-        <div style="font-weight:500">${v.name}</div>
-        <div style="font-size:11px;color:var(--text2)">${v.type} · ${v.plate}</div>
-      </div>
-      ${canEdit() ? `
-        <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openVehicleModal(${v.id})">✏️</span>
-        <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="deleteVehicle(${v.id})">🗑️</span>
-      ` : ''}
-    </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun veicolo</div>';
-}
-
-function addVehicleModal() { openVehicleModal(null); }
-
-function openVehicleModal(id) {
-  const v = id ? vehicles.find(x => x.id === id) : null;
-  const typeOpts = ['Camion','Furgone','Auto','Minibus','Altro'].map(t =>
-    `<option value="${t}" ${v && v.type === t ? 'selected' : ''}>${t}</option>`).join('');
-  showModal(`
-    <h2>${v ? 'Modifica veicolo' : 'Nuovo veicolo'}</h2>
-    <div class="field"><label>Nome</label>
-      <input id="fv-name" value="${v ? v.name : ''}" placeholder="es. Scania 450">
-    </div>
-    <div class="frow">
-      <div class="field"><label>Tipo</label>
-        <select id="fv-type">${typeOpts}</select>
-      </div>
-      <div class="field"><label>Targa</label>
-        <input id="fv-plate" value="${v ? v.plate : ''}" placeholder="es. AB123CD" style="text-transform:uppercase">
-      </div>
-    </div>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn primary" onclick="saveVehicle(${id || 'null'})">Salva</button>
-    </div>`);
-}
-
-async function saveVehicle(id) {
-  const name  = document.getElementById('fv-name').value.trim();
-  const type  = document.getElementById('fv-type').value;
-  const plate = document.getElementById('fv-plate').value.trim().toUpperCase();
-  if (!name) { toast('Inserisci il nome del veicolo'); return; }
-  if (!plate) { toast('Inserisci la targa'); return; }
-
-  if (id) {
-    const { error } = await sb.from('vehicles').update({ name, type, plate }).eq('id', id);
-    if (error) { toast('Errore modifica'); return; }
-    Object.assign(vehicles.find(x => x.id === id), { name, type, plate });
-    toast('Veicolo aggiornato');
-  } else {
-    const { data, error } = await sb.from('vehicles').insert({ name, type, plate, active: true }).select().single();
-    if (error) { toast('Errore: targa già presente o dati non validi'); return; }
-    vehicles.push(data);
-    toast('Veicolo aggiunto');
-  }
-  closeModal();
-  renderVehicles();
-}
-
-async function deleteVehicle(id) {
-  const v = vehicles.find(x => x.id === id);
-  showModal(`
-    <h2>Conferma eliminazione</h2>
-    <p style="margin-bottom:20px;color:var(--text2)">Eliminare il veicolo <strong>${v.name}</strong> (${v.plate})?</p>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn danger" onclick="closeModal();_deleteVehicle(${id})">Elimina</button>
-    </div>`);
-}
-async function _deleteVehicle(id) {
-  const { error } = await sb.from('vehicles').update({ active: false }).eq('id', id);
-  if (error) { toast('Errore eliminazione'); return; }
-  vehicles = vehicles.filter(x => x.id !== id);
-  renderVehicles();
-  toast('Veicolo eliminato');
-}
-
-// ══════════════════════════════════════════════════════════
-//  CONFERMA ELEGANTE (sostituisce confirm())
-// ══════════════════════════════════════════════════════════
-function confirmAction(msg, onConfirm) {
-  showModal(`
-    <h2>Conferma</h2>
-    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">${msg}</p>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn danger" onclick="closeModal();(${onConfirm})()">Elimina</button>
-    </div>`);
-}
-
-// ══════════════════════════════════════════════════════════
-//  GESTIONE UTENTI (solo admin)
-// ══════════════════════════════════════════════════════════
-let usersList = [];
-
-async function renderUsers() {
-  document.getElementById('usr-list').innerHTML = '<div style="color:var(--text3);font-size:12px">Caricamento…</div>';
-  const { data } = await sb.from('user_roles').select('*').order('name');
-  usersList = data || [];
-  const roleLabel = { admin: 'Amministratore', operatore: 'Operatore', viewer: 'Visualizzatore' };
-  const roleClass = { admin: 'role-admin', operatore: 'role-operatore', viewer: 'role-viewer' };
-  document.getElementById('usr-list').innerHTML = usersList.map(u => `
-    <div class="panel-row">
-      <div style="flex:1">
-        <div style="font-weight:500">${u.name}</div>
-        <div style="font-size:11px;color:var(--text2)">${u.email}</div>
-      </div>
-      <span class="role-badge ${roleClass[u.role]}" style="margin-right:8px">${roleLabel[u.role]}</span>
-      <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openUserModal('${u.email}')">✏️</span>
-      <span class="tag" style="cursor:pointer;background:#fcebeb;color:#E24B4A" onclick="confirmDeleteUser('${u.email}','${u.name}')">🗑️</span>
-    </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun utente</div>';
-}
-
-function openUserModal(email) {
-  const u = email ? usersList.find(x => x.email === email) : null;
-  const roleOpts = ['admin','operatore','viewer'].map(r => {
-    const labels = { admin:'Amministratore', operatore:'Operatore', viewer:'Visualizzatore' };
-    return `<option value="${r}" ${u && u.role === r ? 'selected' : ''}>${labels[r]}</option>`;
-  }).join('');
-  showModal(`
-    <h2>${u ? 'Modifica utente' : 'Nuovo utente'}</h2>
-    ${!u ? '<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">⚠️ Crea prima l\'utente su Supabase → Authentication → Add user, poi aggiungilo qui.</div>' : ''}
-    <div class="field"><label>Nome</label>
-      <input id="fu-name" value="${u ? u.name : ''}" placeholder="es. Marco Rossi">
-    </div>
-    <div class="field"><label>Email</label>
-      <input id="fu-email" value="${u ? u.email : ''}" placeholder="email@esempio.com" ${u ? 'readonly style="opacity:.6"' : ''}>
-    </div>
-    <div class="field"><label>Ruolo</label>
-      <select id="fu-role">${roleOpts}</select>
-    </div>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn primary" onclick="saveUser('${email || ''}')">Salva</button>
-    </div>`);
-}
-
-async function saveUser(existingEmail) {
-  const name  = document.getElementById('fu-name').value.trim();
-  const email = existingEmail || document.getElementById('fu-email').value.trim().toLowerCase();
-  const role  = document.getElementById('fu-role').value;
-  if (!name) { toast('Inserisci il nome'); return; }
-  if (!email) { toast('Inserisci la email'); return; }
-
-  if (existingEmail) {
-    // aggiorna ruolo esistente
-    const { error } = await sb.from('user_roles').update({ name, role }).eq('email', email);
-    if (error) { toast('Errore aggiornamento'); return; }
-    toast('Utente aggiornato');
-  } else {
-    // inserisci nuovo
-    const { error } = await sb.from('user_roles').insert({ email, name, role });
-    if (error) { toast('Errore: email già presente o non valida'); return; }
-    toast('Utente aggiunto');
-  }
-  closeModal();
-  renderUsers();
-}
-
-function confirmDeleteUser(email, name) {
-  showModal(`
-    <h2>Conferma eliminazione</h2>
-    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare l'accesso di <strong>${name}</strong> (${email})?<br>L'utente non potrà più accedere al sito.</p>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn danger" onclick="deleteUser('${email}')">Elimina accesso</button>
-    </div>`);
-}
-
-async function deleteUser(email) {
-  const { error } = await sb.from('user_roles').delete().eq('email', email);
-  if (error) { toast('Errore eliminazione'); return; }
-  closeModal();
-  renderUsers();
-  toast('Accesso rimosso');
-}
+init();
 </script>
 </body>
 </html>
