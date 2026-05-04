@@ -170,29 +170,29 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .stop-rm:hover{color:var(--red)}
 
 /* ── VISTA TURNI ── */
-.turni-grid{display:flex;min-width:700px}
-.turni-time-col{width:52px;flex-shrink:0}
-.turni-day-group{flex:1;border-left:0.5px solid var(--border2)}
-.turni-day-head{padding:5px 4px 2px;text-align:center;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
+.turni-wrap{overflow:auto;flex:1}
+.turni-inner{min-width:900px}
+.turni-day-head{padding:6px 4px 4px;text-align:center;border-bottom:0.5px solid var(--border2);background:var(--bg)}
 .turni-day-head .dow{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
-.turni-day-head .dom{font-size:16px;font-weight:500;line-height:1.3}
-.turni-day-head.today .dom{background:var(--blue);color:#fff;border-radius:50%;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center}
-.turni-drv-heads{display:flex;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:46px;z-index:2}
-.turni-drv-hcell{flex:1;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:3px 4px;text-align:center;border-right:0.5px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.turni-day-head .dom{font-size:18px;font-weight:500;line-height:1.3}
+.turni-day-head.today .dom{background:var(--blue);color:#fff;border-radius:50%;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center}
+.turni-drv-hcell{flex:1;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:4px 6px;text-align:center;border-right:0.5px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px}
 .turni-drv-hcell:last-child{border-right:none}
 .turni-drv-hcell.jolly{color:var(--text3);font-style:italic}
-.turni-fascia{display:flex;border-bottom:0.5px solid var(--border2)}
-.turni-fascia-label{width:52px;flex-shrink:0;font-size:10px;font-weight:600;color:var(--text2);padding:6px 6px 0;border-right:0.5px solid var(--border2);text-align:right;text-transform:uppercase;letter-spacing:.04em;line-height:1.3}
-.turni-fascia-body{flex:1;display:flex}
-.turni-col{flex:1;min-height:90px;border-right:0.5px solid var(--border);padding:4px;display:flex;flex-direction:column;gap:3px;cursor:default;transition:background .08s}
+.turni-fascia-label{width:70px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--text2);padding:10px 8px 0;border-right:0.5px solid var(--border2);text-align:right;line-height:1.4}
+.turni-fascia-sub{font-size:10px;font-weight:400;color:var(--text3)}
+.turni-col{flex:1;min-height:180px;min-width:80px;border-right:0.5px solid var(--border);padding:6px;display:flex;flex-direction:column;gap:4px;cursor:default;transition:background .08s}
 .turni-col:last-child{border-right:none}
 .turni-col:hover{background:rgba(55,138,221,.04)}
 .turni-col.drop-target{background:rgba(55,138,221,.15)}
-.turni-block{border-radius:5px;padding:4px 7px;font-size:11px;font-weight:500;cursor:grab;border-left:3px solid transparent;line-height:1.3;transition:box-shadow .1s,opacity .1s;position:relative}
-.turni-block:hover{box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.turni-block{border-radius:6px;padding:6px 9px;font-size:12px;font-weight:500;cursor:grab;border-left:3px solid transparent;line-height:1.4;transition:box-shadow .1s,opacity .1s}
+.turni-block:hover{box-shadow:0 2px 10px rgba(0,0,0,.18)}
 .turni-block.dragging{opacity:.35;cursor:grabbing}
 .turni-block.selected{outline:2px solid var(--blue);outline-offset:1px}
-.turni-add-btn{font-size:18px;color:var(--border2);text-align:center;cursor:pointer;padding:4px;border-radius:4px;transition:all .1s;margin-top:auto}
+.turni-block-dest{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.turni-block-time{font-size:10px;opacity:.65;margin-top:1px}
+.turni-block-veh{font-size:10px;opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.turni-add-btn{font-size:20px;color:var(--border2);text-align:center;cursor:pointer;padding:6px;border-radius:6px;transition:all .15s;margin-top:auto;line-height:1}
 .turni-add-btn:hover{color:var(--blue);background:var(--blue-bg)}
 
 /* ── CONFIRM INPUT ── */
@@ -808,39 +808,51 @@ function renderTurni() {
   document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
   const grid = document.getElementById('cal-grid');
   const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
+  const nCols = cols.length; // colonne per giorno
+  // Larghezza minima per colonna autista
+  const colMinW = 100;
+  const labelW  = 70;
+  const totalMinW = labelW + (6 * nCols * colMinW);
 
-  // Header giorni (sticky)
-  let html = `<div style="display:flex;position:sticky;top:0;z-index:4;background:var(--bg);border-bottom:0.5px solid var(--border2)">
-    <div style="width:52px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
+  // Header sticky: angolo + [giorno [autista...]] x6
+  let html = `<div style="display:flex;position:sticky;top:0;z-index:4;background:var(--bg);border-bottom:0.5px solid var(--border2);min-width:${totalMinW}px">
+    <div style="width:${labelW}px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
+
   dates.forEach((d, di) => {
-    html += `<div class="turni-day-group" style="flex:1">
+    html += `<div style="flex:1;min-width:${nCols*colMinW}px;border-left:0.5px solid var(--border2)">
       <div class="turni-day-head${isToday(d)?' today':''}">
         <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
       </div>
-      <div class="turni-drv-heads">
-        ${cols.map(c => `<div class="turni-drv-hcell${c.id==='jolly'?' jolly':''}" style="color:${c.id==='jolly'?'var(--text3)':c.color}">${c.name.split(' ')[0]}</div>`).join('')}
+      <div style="display:flex;border-top:0.5px solid var(--border)">
+        ${cols.map(c => `<div class="turni-drv-hcell${c.id==='jolly'?' jolly':''}" style="color:${c.id==='jolly'?'var(--text3)':c.color};min-width:${colMinW}px">${c.name.split(' ')[0]}</div>`).join('')}
       </div>
     </div>`;
   });
   html += '</div>';
 
-  // Righe fasce
+  // Fasce orarie
   FASCE.forEach(fascia => {
-    html += `<div class="turni-fascia">
-      <div class="turni-fascia-label">${fascia.label}<br><span style="font-weight:400;font-size:9px">${fascia.from}–${fascia.to}</span></div>
+    html += `<div style="display:flex;border-bottom:0.5px solid var(--border2);min-width:${totalMinW}px">
+      <div class="turni-fascia-label" style="width:${labelW}px">
+        ${fascia.label}<br><span class="turni-fascia-sub">${fascia.from}:00–${fascia.to}:00</span>
+      </div>
       <div style="flex:1;display:flex">`;
+
     dates.forEach((d, di) => {
       html += `<div style="flex:1;display:flex;border-left:0.5px solid var(--border2)">`;
       cols.forEach(c => {
-        const colId = c.id;
-        html += `<div class="turni-col" id="tc-${di}-${fascia.id}-${colId}" data-day="${di}" data-fascia="${fascia.id}" data-drv="${colId}"
-          ondragover="event.preventDefault()" ondrop="onTurniDrop(event,${di},'${fascia.id}','${colId}')"
-          onclick="onTurniColClick(event,${di},'${fascia.id}','${colId}')">
-          <div class="turni-add-btn" onclick="event.stopPropagation();openTurniForm(${di},'${fascia.id}','${colId}')">＋</div>
+        html += `<div class="turni-col" id="tc-${di}-${fascia.id}-${c.id}"
+          style="min-width:${colMinW}px"
+          data-day="${di}" data-fascia="${fascia.id}" data-drv="${c.id}"
+          ondragover="event.preventDefault()"
+          ondrop="onTurniDrop(event,${di},'${fascia.id}','${c.id}')"
+          onclick="onTurniColClick(event,${di},'${fascia.id}','${c.id}')">
+          <div class="turni-add-btn" onclick="event.stopPropagation();openTurniForm(${di},'${fascia.id}','${c.id}')">＋</div>
         </div>`;
       });
       html += `</div>`;
     });
+
     html += `</div></div>`;
   });
 
@@ -857,15 +869,17 @@ function renderTurniTrips() {
 
   trips.forEach(t => {
     const drv = drivers.find(dr => dr.id === t.driver_id);
-    const col = drv || cols.find(c => c.id === 'jolly');
+    const col  = drv || cols.find(c => c.id === 'jolly');
     const colId = drv ? drv.id : 'jolly';
     const fascia = fasciaForSlot(t.start_slot);
     const cell = document.getElementById(`tc-${t.day}-${fascia.id}-${colId}`);
     if (!cell) return;
 
-    // Rimuovi il "+" dal fondo (lo rimettiamo dopo i blocchi)
     const addBtn = cell.querySelector('.turni-add-btn');
     if (addBtn) addBtn.remove();
+
+    const veh = vehicles.find(v => v.id === t.vehicle_id);
+    const timeStr = `${slotToTime(t.start_slot)}–${slotToTime(t.start_slot+t.duration)}`;
 
     const block = document.createElement('div');
     block.className = 'turni-block' + (selectedTrips.has(t.id) ? ' selected' : '');
@@ -873,28 +887,29 @@ function renderTurniTrips() {
     block.draggable = canEdit();
     block.dataset.tripId = t.id;
     block.style.cssText = `background:${col.light};color:${col.text_color};border-left-color:${col.color}`;
-    const timeStr = `${slotToTime(t.start_slot)}–${slotToTime(t.start_slot+t.duration)}`;
-    block.innerHTML = `<div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.dest}</div>
-      <div style="font-size:9px;opacity:.7">${timeStr}</div>`;
+    block.innerHTML = `
+      <div class="turni-block-dest">${t.dest}</div>
+      <div class="turni-block-time">🕐 ${timeStr}</div>
+      ${veh ? `<div class="turni-block-veh">🚛 ${veh.name}</div>` : ''}`;
+
     block.addEventListener('click', e => {
       if (e.ctrlKey || e.metaKey) { toggleTripSelection(t.id); block.classList.toggle('selected', selectedTrips.has(t.id)); return; }
       showTripModal(t.id);
     });
     block.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('text/plain', t.id);
-      block.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', String(t.id));
+      setTimeout(() => block.classList.add('dragging'), 0);
     });
     block.addEventListener('dragend', () => block.classList.remove('dragging'));
-    cell.insertBefore(block, cell.querySelector('.turni-add-btn'));
 
-    // Rimetti il "+"
-    if (!cell.querySelector('.turni-add-btn')) {
-      const btn = document.createElement('div');
-      btn.className = 'turni-add-btn';
-      btn.textContent = '＋';
-      btn.onclick = ev => { ev.stopPropagation(); openTurniForm(t.day, fascia.id, colId); };
-      cell.appendChild(btn);
-    }
+    cell.insertBefore(block, null); // append
+
+    // Rimetti il "+" in fondo
+    const btn = document.createElement('div');
+    btn.className = 'turni-add-btn';
+    btn.textContent = '＋';
+    btn.onclick = ev => { ev.stopPropagation(); openTurniForm(t.day, fascia.id, colId); };
+    cell.appendChild(btn);
   });
 }
 
