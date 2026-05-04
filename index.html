@@ -166,9 +166,34 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .stop-item{display:flex;align-items:center;gap:6px;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius);padding:5px 8px}
 .stop-num{font-size:10px;font-weight:700;color:var(--text2);width:16px;text-align:center;flex-shrink:0}
 .stop-item input{flex:1;border:none;background:transparent;font-size:12px;color:var(--text);outline:none;padding:0}
-.stop-dur{width:80px;border:0.5px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;background:var(--bg);color:var(--text)}
 .stop-rm{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0}
 .stop-rm:hover{color:var(--red)}
+
+/* ── VISTA TURNI ── */
+.turni-grid{display:flex;min-width:700px}
+.turni-time-col{width:52px;flex-shrink:0}
+.turni-day-group{flex:1;border-left:0.5px solid var(--border2)}
+.turni-day-head{padding:5px 4px 2px;text-align:center;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
+.turni-day-head .dow{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.turni-day-head .dom{font-size:16px;font-weight:500;line-height:1.3}
+.turni-day-head.today .dom{background:var(--blue);color:#fff;border-radius:50%;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center}
+.turni-drv-heads{display:flex;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:46px;z-index:2}
+.turni-drv-hcell{flex:1;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:3px 4px;text-align:center;border-right:0.5px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.turni-drv-hcell:last-child{border-right:none}
+.turni-drv-hcell.jolly{color:var(--text3);font-style:italic}
+.turni-fascia{display:flex;border-bottom:0.5px solid var(--border2)}
+.turni-fascia-label{width:52px;flex-shrink:0;font-size:10px;font-weight:600;color:var(--text2);padding:6px 6px 0;border-right:0.5px solid var(--border2);text-align:right;text-transform:uppercase;letter-spacing:.04em;line-height:1.3}
+.turni-fascia-body{flex:1;display:flex}
+.turni-col{flex:1;min-height:90px;border-right:0.5px solid var(--border);padding:4px;display:flex;flex-direction:column;gap:3px;cursor:default;transition:background .08s}
+.turni-col:last-child{border-right:none}
+.turni-col:hover{background:rgba(55,138,221,.04)}
+.turni-col.drop-target{background:rgba(55,138,221,.15)}
+.turni-block{border-radius:5px;padding:4px 7px;font-size:11px;font-weight:500;cursor:grab;border-left:3px solid transparent;line-height:1.3;transition:box-shadow .1s,opacity .1s;position:relative}
+.turni-block:hover{box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.turni-block.dragging{opacity:.35;cursor:grabbing}
+.turni-block.selected{outline:2px solid var(--blue);outline-offset:1px}
+.turni-add-btn{font-size:18px;color:var(--border2);text-align:center;cursor:pointer;padding:4px;border-radius:4px;transition:all .1s;margin-top:auto}
+.turni-add-btn:hover{color:var(--blue);background:var(--blue-bg)}
 
 /* ── CONFIRM INPUT ── */
 .confirm-input-wrap{margin:12px 0 4px}
@@ -286,6 +311,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
         <button onclick="prevWeek()">‹</button>
         <span id="week-label">…</span>
         <button onclick="nextWeek()">›</button>
+        <div style="width:1px;height:16px;background:var(--border2);margin:0 2px"></div>
+        <button id="view-mode-btn" onclick="toggleCalMode()" title="Cambia visualizzazione" style="font-size:13px;padding:4px 8px">🕐</button>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:14px">
@@ -407,8 +434,9 @@ let currentVehTab = 'fleet';
 
 let selDrag      = null;
 let tripDrag     = null;
-let selectedTrips = new Set(); // ids selezionati con CTRL+click
+let selectedTrips = new Set();
 let multiDrag    = null;
+let calMode      = 'oraria'; // 'oraria' | 'turni'
 
 const DAYS      = ['Lun','Mar','Mer','Gio','Ven','Sab'];
 const DAYS_FULL = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
@@ -443,9 +471,33 @@ async function init() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) await onLogin(session.user);
   else showLoginScreen();
+
+  // Refresh sessione automatico ogni 10 minuti
+  setInterval(async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session && currentUser) { currentUser = null; showLoginScreen(); }
+  }, 10 * 60 * 1000);
+
+  // Quando la tab torna in primo piano, ricontrolla la sessione
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && currentUser) {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { currentUser = null; showLoginScreen(); return; }
+      // Ricarica dati se la tab era nascosta da più di 5 minuti
+      if (!window._lastVisible || Date.now() - window._lastVisible > 5 * 60 * 1000) {
+        await loadTrips(); renderTrips();
+      }
+    }
+    if (document.visibilityState === 'hidden') window._lastVisible = Date.now();
+  });
+
   sb.auth.onAuthStateChange(async (_e, session) => {
-    if (session) await onLogin(session.user);
-    else { currentUser = null; showLoginScreen(); }
+    if (session) {
+      // Solo se non c'è già un utente loggato (evita doppio init)
+      if (!currentUser) await onLogin(session.user);
+    } else {
+      currentUser = null; showLoginScreen();
+    }
   });
 }
 
@@ -682,15 +734,24 @@ function renderLegend() {
 }
 
 function renderCal() {
+  if (calMode === 'turni') { renderTurni(); return; }
+  renderCalOraria();
+}
+
+function toggleCalMode() {
+  calMode = calMode === 'oraria' ? 'turni' : 'oraria';
+  const btn = document.getElementById('view-mode-btn');
+  if (btn) btn.textContent = calMode === 'oraria' ? '🕐' : '☀️';
+  renderCal();
+}
+
+function renderCalOraria() {
   const dates = getWeekDates();
   document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
   const grid = document.getElementById('cal-grid');
 
-  // Colonne per giorno: una per ogni autista + 1 jolly
   const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa' }];
-  const nCols = cols.length;
 
-  // Header: angolo + gruppi per giorno
   let html = `<div style="display:flex;align-items:stretch;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
     <div style="width:52px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
   dates.forEach((d, di) => {
@@ -705,7 +766,6 @@ function renderCal() {
   });
   html += '</div>';
 
-  // Body: righe orarie
   for (let s = 0; s < SLOTS; s++) {
     const isHour = s % 2 === 0;
     html += `<div class="cal-body-row">
@@ -714,7 +774,7 @@ function renderCal() {
       </div>`;
     for (let di = 0; di < 6; di++) {
       html += `<div class="cal-day-col">`;
-      cols.forEach((c, ci) => {
+      cols.forEach(c => {
         html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}"></div>`;
       });
       html += `</div>`;
@@ -727,6 +787,143 @@ function renderCal() {
   grid.onmousemove   = onGridMouseMove;
   grid.oncontextmenu = onGridCtx;
   renderTrips();
+}
+
+// ── VISTA TURNI ──
+const FASCE = [
+  { id: 'mattina',    label: '☀️ Mattina',    from: 6,  to: 13 },
+  { id: 'pomeriggio', label: '🌤 Pomeriggio', from: 13, to: 22 },
+];
+
+function slotInFascia(slot, fascia) {
+  const h = START_H + slot / 2;
+  return h >= fascia.from && h < fascia.to;
+}
+function fasciaForSlot(slot) {
+  return FASCE.find(f => slotInFascia(slot, f)) || FASCE[0];
+}
+
+function renderTurni() {
+  const dates = getWeekDates();
+  document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
+  const grid = document.getElementById('cal-grid');
+  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
+
+  // Header giorni (sticky)
+  let html = `<div style="display:flex;position:sticky;top:0;z-index:4;background:var(--bg);border-bottom:0.5px solid var(--border2)">
+    <div style="width:52px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
+  dates.forEach((d, di) => {
+    html += `<div class="turni-day-group" style="flex:1">
+      <div class="turni-day-head${isToday(d)?' today':''}">
+        <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
+      </div>
+      <div class="turni-drv-heads">
+        ${cols.map(c => `<div class="turni-drv-hcell${c.id==='jolly'?' jolly':''}" style="color:${c.id==='jolly'?'var(--text3)':c.color}">${c.name.split(' ')[0]}</div>`).join('')}
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+
+  // Righe fasce
+  FASCE.forEach(fascia => {
+    html += `<div class="turni-fascia">
+      <div class="turni-fascia-label">${fascia.label}<br><span style="font-weight:400;font-size:9px">${fascia.from}–${fascia.to}</span></div>
+      <div style="flex:1;display:flex">`;
+    dates.forEach((d, di) => {
+      html += `<div style="flex:1;display:flex;border-left:0.5px solid var(--border2)">`;
+      cols.forEach(c => {
+        const colId = c.id;
+        html += `<div class="turni-col" id="tc-${di}-${fascia.id}-${colId}" data-day="${di}" data-fascia="${fascia.id}" data-drv="${colId}"
+          ondragover="event.preventDefault()" ondrop="onTurniDrop(event,${di},'${fascia.id}','${colId}')"
+          onclick="onTurniColClick(event,${di},'${fascia.id}','${colId}')">
+          <div class="turni-add-btn" onclick="event.stopPropagation();openTurniForm(${di},'${fascia.id}','${colId}')">＋</div>
+        </div>`;
+      });
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+  });
+
+  grid.innerHTML = html;
+  grid.onmousedown   = null;
+  grid.onmousemove   = null;
+  grid.oncontextmenu = null;
+  renderTurniTrips();
+}
+
+function renderTurniTrips() {
+  document.querySelectorAll('.turni-block').forEach(e => e.remove());
+  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
+
+  trips.forEach(t => {
+    const drv = drivers.find(dr => dr.id === t.driver_id);
+    const col = drv || cols.find(c => c.id === 'jolly');
+    const colId = drv ? drv.id : 'jolly';
+    const fascia = fasciaForSlot(t.start_slot);
+    const cell = document.getElementById(`tc-${t.day}-${fascia.id}-${colId}`);
+    if (!cell) return;
+
+    // Rimuovi il "+" dal fondo (lo rimettiamo dopo i blocchi)
+    const addBtn = cell.querySelector('.turni-add-btn');
+    if (addBtn) addBtn.remove();
+
+    const block = document.createElement('div');
+    block.className = 'turni-block' + (selectedTrips.has(t.id) ? ' selected' : '');
+    block.id = `tblock-${t.id}`;
+    block.draggable = canEdit();
+    block.dataset.tripId = t.id;
+    block.style.cssText = `background:${col.light};color:${col.text_color};border-left-color:${col.color}`;
+    const timeStr = `${slotToTime(t.start_slot)}–${slotToTime(t.start_slot+t.duration)}`;
+    block.innerHTML = `<div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.dest}</div>
+      <div style="font-size:9px;opacity:.7">${timeStr}</div>`;
+    block.addEventListener('click', e => {
+      if (e.ctrlKey || e.metaKey) { toggleTripSelection(t.id); block.classList.toggle('selected', selectedTrips.has(t.id)); return; }
+      showTripModal(t.id);
+    });
+    block.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', t.id);
+      block.classList.add('dragging');
+    });
+    block.addEventListener('dragend', () => block.classList.remove('dragging'));
+    cell.insertBefore(block, cell.querySelector('.turni-add-btn'));
+
+    // Rimetti il "+"
+    if (!cell.querySelector('.turni-add-btn')) {
+      const btn = document.createElement('div');
+      btn.className = 'turni-add-btn';
+      btn.textContent = '＋';
+      btn.onclick = ev => { ev.stopPropagation(); openTurniForm(t.day, fascia.id, colId); };
+      cell.appendChild(btn);
+    }
+  });
+}
+
+function onTurniDrop(e, day, fasciaId, colId) {
+  e.preventDefault();
+  const tripId = +e.dataTransfer.getData('text/plain');
+  const t = trips.find(x => x.id === tripId); if (!t) return;
+  const fascia = FASCE.find(f => f.id === fasciaId);
+  // Sposta all'inizio della fascia se il viaggio non ci sta già
+  const newSlot = (fascia.from - START_H) * 2;
+  const newDrvId = colId === 'jolly' ? null : +colId;
+  t.day = day; t.start_slot = newSlot; if (newDrvId) t.driver_id = newDrvId;
+  renderTurniTrips();
+  sb.from('trips').update({ day, start_slot: newSlot, driver_id: t.driver_id }).eq('id', tripId).then(({error}) => {
+    if (!error) { sb.from('activity_log').insert({ username: currentUser.name, action: `Spostato (turni) ${t.dest} → ${DAYS[day]} ${fascia.label}` }); toast('Spostato'); }
+    else toast('Errore salvataggio');
+  });
+}
+
+function onTurniColClick(e, day, fasciaId, colId) {
+  if (e.target.closest('.turni-block') || e.target.closest('.turni-add-btn')) return;
+  if (canEdit()) openTurniForm(day, fasciaId, colId);
+}
+
+function openTurniForm(day, fasciaId, colId) {
+  const fascia = FASCE.find(f => f.id === fasciaId);
+  const startSlot = (fascia.from - START_H) * 2;
+  const preDriverId = colId !== 'jolly' ? colId : '';
+  openTripForm(null, day, startSlot, 2, preDriverId);
 }
 
 function renderTrips() {
@@ -1044,11 +1241,12 @@ function openTripForm(id, day, slot, dur, preDriverId) {
 
   // Inizializza stops
   if (t) {
-    _tripStops = [{ dest: t.dest, dur: t.duration }];
+    _tripStops = [{ dest: t.dest }];
   } else {
-    _tripStops = [{ dest: '', dur: sDur }];
+    _tripStops = [{ dest: '' }];
   }
 
+  const durOpts = [1,2,3,4,6,8,10,12].map(n => `<option value="${n}" ${sDur===n?'selected':''}>${n===1?'30 min':n%2===0?n/2+' ore':Math.floor(n/2)+'h 30'}</option>`).join('');
   const vehOpts = `<option value="">-- Nessun veicolo --</option>${vehicles.map(v=>`<option value="${v.id}" ${t&&t.vehicle_id===v.id?'selected':''}>${v.name} (${v.type}) · ${v.plate}</option>`).join('')}`;
 
   showModal(`<h2>${t?'Modifica viaggio':'Nuovo viaggio'}</h2>
@@ -1058,12 +1256,13 @@ function openTripForm(id, day, slot, dur, preDriverId) {
       <div class="field"><label>Giorno</label><select id="f-day" onchange="updSub()">${dayOpts}</select></div>
       <div class="field"><label>Ora inizio</label><select id="f-slot" onchange="updSub()">${slotOpts}</select></div>
     </div>
+    <div class="field"><label>Durata (per ogni tappa)</label><select id="f-dur" onchange="updSub()">${durOpts}</select></div>
     <div class="field">
       <label style="display:flex;align-items:center;justify-content:space-between">
         Destinazioni / Tappe
         ${!t ? `<button type="button" class="btn sm" onclick="addStop()">+ Tappa</button>` : ''}
       </label>
-      <datalist id="dl">${destList}</datalist>
+      <datalist id="dl">${dests.map(d=>`<option value="${d}">`).join('')}</datalist>
       <div class="stop-list" id="stop-list"></div>
       ${!t ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Ogni tappa crea un viaggio separato nel calendario</div>` : ''}
     </div>
@@ -1074,23 +1273,20 @@ function openTripForm(id, day, slot, dur, preDriverId) {
       <button class="btn primary" onclick="saveTrip(${id||'null'})">Salva</button>
     </div>`);
   renderStopList();
+  updSub();
 }
 
 function durLabel(n) { return n===1?'30m':n%2===0?n/2+'h':Math.floor(n/2)+'h30'; }
 
 function renderStopList() {
   const list = document.getElementById('stop-list'); if (!list) return;
-  const destList = dests.map(d=>`<option value="${d}">`).join('');
   list.innerHTML = _tripStops.map((s,i) => {
-    const durOpts = [1,2,3,4,6,8,10,12].map(n=>`<option value="${n}" ${s.dur===n?'selected':''}>${durLabel(n)}</option>`).join('');
     return `<div class="stop-item">
       <div class="stop-num">${i+1}</div>
       <input list="dl" value="${s.dest}" placeholder="Destinazione…" oninput="_tripStops[${i}].dest=this.value">
-      <select class="stop-dur" onchange="_tripStops[${i}].dur=+this.value;updSub()">${durOpts}</select>
       ${_tripStops.length>1?`<button class="stop-rm" onclick="removeStop(${i})">✕</button>`:'<div style="width:20px"></div>'}
     </div>`;
   }).join('');
-  updSub();
 }
 
 function addStop() {
@@ -1104,9 +1300,10 @@ function removeStop(i) {
 
 function updSub() {
   const el = document.getElementById('msub'); if (!el) return;
-  const slot = +document.getElementById('f-slot').value;
-  const day  = +document.getElementById('f-day').value;
-  const totalDur = _tripStops.reduce((s,x)=>s+x.dur,0);
+  const slot = +(document.getElementById('f-slot')?.value||0);
+  const day  = +(document.getElementById('f-day')?.value||0);
+  const dur  = +(document.getElementById('f-dur')?.value||2);
+  const totalDur = dur * _tripStops.length;
   el.textContent = `${DAYS_FULL[day]} · ${slotToTime(slot)} – ${slotToTime(slot+totalDur)}`;
 }
 
@@ -1114,6 +1311,7 @@ async function saveTrip(id) {
   const driver_id  = +document.getElementById('f-drv').value;
   const day        = +document.getElementById('f-day').value;
   const start_slot = +document.getElementById('f-slot').value;
+  const duration   = +document.getElementById('f-dur').value;
   const note       = document.getElementById('f-note').value.trim();
   const vehicle_id = document.getElementById('f-veh').value ? +document.getElementById('f-veh').value : null;
   const drv = drivers.find(d => d.id === driver_id);
@@ -1123,31 +1321,32 @@ async function saveTrip(id) {
 
   if (id) {
     // MODIFICA: aggiorna il viaggio singolo
-    const s = _tripStops[0];
-    const { error } = await sb.from('trips').update({ driver_id, day, start_slot, duration: s.dur, dest: s.dest.trim(), note, vehicle_id }).eq('id', id);
+    const dest = _tripStops[0].dest.trim();
+    const { error } = await sb.from('trips').update({ driver_id, day, start_slot, duration, dest, note, vehicle_id }).eq('id', id);
     if (error) { toast('Errore nel salvataggio'); return; }
-    Object.assign(trips.find(x=>x.id===id), { driver_id, day, start_slot, duration: s.dur, dest: s.dest.trim(), note, vehicle_id });
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${s.dest}` });
+    Object.assign(trips.find(x=>x.id===id), { driver_id, day, start_slot, duration, dest, note, vehicle_id });
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}` });
     toast('Viaggio aggiornato');
   } else {
-    // NUOVO: crea N viaggi consecutivi
+    // NUOVO: crea N viaggi consecutivi, tutti con la stessa durata
     let curSlot = start_slot;
     const inserted = [];
     for (const s of _tripStops) {
       const { data, error } = await sb.from('trips').insert({
-        driver_id, day, start_slot: curSlot, duration: s.dur, dest: s.dest.trim(),
+        driver_id, day, start_slot: curSlot, duration, dest: s.dest.trim(),
         note, vehicle_id, week_offset: weekOffset, created_by: currentUser.name
       }).select().single();
       if (error) { toast(`Errore su tappa "${s.dest}"`); break; }
       trips.push(data);
       inserted.push(s.dest.trim());
-      curSlot += s.dur;
+      curSlot += duration;
     }
     const destNames = inserted.join(' → ');
     await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name}: ${destNames}${veh?' · '+veh.name:''}` });
     toast(`${inserted.length} viaggio${inserted.length>1?'i':''} creato${inserted.length>1?'i':''}`);
   }
-  closeModal(); renderTrips();
+  closeModal();
+  if (calMode === 'turni') renderTurniTrips(); else renderTrips();
 }
 function showTripModal(id) {
   const t = trips.find(x => x.id === id); if (!t) return;
