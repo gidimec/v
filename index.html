@@ -76,9 +76,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .sb-icon:hover,.sb-icon.active{background:var(--bg);border-color:var(--border2);color:var(--text)}
 .sb-badge{position:absolute;top:2px;right:2px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:8px;min-width:14px;height:14px;display:flex;align-items:center;justify-content:center;padding:0 3px;pointer-events:none}
 
-/* ── CALENDAR ── */
+/* ── CALENDAR WRAPPER ── */
 .cal-wrap{flex:1;overflow:auto}
-.cal{display:grid;grid-template-columns:52px repeat(6,1fr);min-width:580px}
+.cal{display:block;min-width:700px}
 .ch-empty{border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
 .ch-day{padding:7px 4px;text-align:center;border-bottom:0.5px solid var(--border2);border-left:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
 .ch-day .dow{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
@@ -821,101 +821,184 @@ function updateSelectionHint() {
 
 document.addEventListener('keydown', e => { if (e.key==='Escape') clearSelection(); });
 
-// ── DRAG TRIP ──
+// ── DRAG TRIP SINGOLO ──
 function startTripDrag(e, tripId) {
-  const t = trips.find(x => x.id === tripId);
+  const t   = trips.find(x => x.id === tripId);
   const drv = drivers.find(d => d.id === t.driver_id);
   const block = document.getElementById(`trip-${tripId}`);
-  const rect = block.getBoundingClientRect();
+  const rect  = block.getBoundingClientRect();
   const offsetSlot = Math.floor((e.clientY - rect.top) / SLOT_H);
   const ghost = document.getElementById('ghost');
-  ghost.style.cssText = `display:block;width:110px;height:${t.duration * SLOT_H - 3}px;background:${drv.light};color:${drv.text_color};border-left:3px solid ${drv.color};left:${e.clientX + 14}px;top:${e.clientY - 10}px`;
-  ghost.innerHTML = `<div style="font-size:10px;font-weight:500;padding:3px 6px">${drv.name.split(' ')[0]}<br><span style="opacity:.75">${t.dest}</span></div>`;
+  const col = drv || { light:'#f0f0ee', text_color:'#555', color:'#aaa', name:'Jolly' };
+  ghost.style.cssText = `display:block;width:120px;height:${t.duration*SLOT_H-3}px;background:${col.light};color:${col.text_color};border-left:3px solid ${col.color};left:${e.clientX+14}px;top:${e.clientY-10}px`;
+  ghost.innerHTML = `<div style="font-size:10px;font-weight:600;padding:3px 6px">${t.dest}</div>`;
   block.classList.add('dragging');
-  tripDrag = { tripId, offsetSlot, moved: false, origDay: t.day, origSlot: t.start_slot };
+  tripDrag = { tripId, offsetSlot, moved: false };
   document.addEventListener('mousemove', onTripMove);
-  document.addEventListener('mouseup', onTripUp);
+  document.addEventListener('mouseup',   onTripUp);
 }
 function onTripMove(e) {
   if (!tripDrag) return;
   tripDrag.moved = true;
   const ghost = document.getElementById('ghost');
-  ghost.style.left = (e.clientX + 14) + 'px';
-  ghost.style.top = (e.clientY - 10) + 'px';
+  ghost.style.left = (e.clientX+14)+'px';
+  ghost.style.top  = (e.clientY-10)+'px';
   const target = getSlotAt(e.clientX, e.clientY);
   clearDropTargets();
   if (target) {
     const t = trips.find(x => x.id === tripDrag.tripId);
-    const newSlot = Math.max(0, Math.min(SLOTS - t.duration, target.slot - tripDrag.offsetSlot));
-    for (let s = newSlot; s < newSlot + t.duration; s++) { const el = document.getElementById(`sr-${target.day}-${s}`); if (el) el.classList.add('drop-target'); }
-    tripDrag.targetDay = target.day; tripDrag.targetSlot = newSlot;
+    const newSlot = Math.max(0, Math.min(SLOTS-t.duration, target.slot-tripDrag.offsetSlot));
+    const colId = target.drv;
+    for (let s = newSlot; s < newSlot+t.duration; s++) {
+      const el = document.getElementById(`ds-${target.day}-${s}-${colId}`);
+      if (el) el.classList.add('drop-target');
+    }
+    tripDrag.targetDay  = target.day;
+    tripDrag.targetSlot = newSlot;
+    tripDrag.targetDrv  = colId;
   }
 }
-async function onTripUp(e) {
+async function onTripUp() {
   if (!tripDrag) return;
   document.removeEventListener('mousemove', onTripMove);
-  document.removeEventListener('mouseup', onTripUp);
+  document.removeEventListener('mouseup',   onTripUp);
   document.getElementById('ghost').style.display = 'none';
   const block = document.getElementById(`trip-${tripDrag.tripId}`);
   if (block) block.classList.remove('dragging');
   clearDropTargets();
   if (tripDrag.moved && tripDrag.targetDay !== undefined) {
-    const t = trips.find(x => x.id === tripDrag.tripId);
+    const t   = trips.find(x => x.id === tripDrag.tripId);
     const drv = drivers.find(d => d.id === t.driver_id);
     const oldInfo = `${DAYS[t.day]} ${slotToTime(t.start_slot)}`;
-    t.day = tripDrag.targetDay; t.start_slot = tripDrag.targetSlot;
+    // Se trascina su colonna autista diversa, aggiorna driver_id
+    const newDrvId = (tripDrag.targetDrv === 'jolly') ? null : +tripDrag.targetDrv;
+    t.day = tripDrag.targetDay; t.start_slot = tripDrag.targetSlot; t.driver_id = newDrvId || t.driver_id;
     renderTrips();
-    const { error } = await sb.from('trips').update({ day: t.day, start_slot: t.start_slot }).eq('id', t.id);
-    if (error) { toast('Errore nel salvataggio'); }
-    else {
-      await sb.from('activity_log').insert({ username: currentUser.name, action: `Spostato ${drv.name} → ${t.dest} (${oldInfo} → ${DAYS[t.day]} ${slotToTime(t.start_slot)})` });
+    const { error } = await sb.from('trips').update({ day: t.day, start_slot: t.start_slot, driver_id: t.driver_id }).eq('id', t.id);
+    if (!error) {
+      await sb.from('activity_log').insert({ username: currentUser.name, action: `Spostato ${drv?.name||'?'} → ${t.dest} (${oldInfo} → ${DAYS[t.day]} ${slotToTime(t.start_slot)})` });
       toast(`Spostato a ${DAYS_FULL[t.day]} ${slotToTime(t.start_slot)}`);
-    }
+    } else toast('Errore nel salvataggio');
   }
   tripDrag = null;
 }
+
+// ── MULTI DRAG ──
+function startMultiDrag(e) {
+  const ids = [...selectedTrips];
+  const ghost = document.createElement('div');
+  ghost.className = 'multi-drag-ghost';
+  ghost.textContent = `📦 Sposto ${ids.length} viaggi`;
+  ghost.style.left = (e.clientX+14)+'px';
+  ghost.style.top  = (e.clientY-10)+'px';
+  document.body.appendChild(ghost);
+  // Calcola offset dal primo blocco
+  const firstTrip = trips.find(x => x.id === ids[0]);
+  const firstBlock = document.getElementById(`trip-${ids[0]}`);
+  const rect = firstBlock ? firstBlock.getBoundingClientRect() : { top: e.clientY };
+  const offsetSlot = Math.floor((e.clientY - rect.top) / SLOT_H);
+  ids.forEach(id => { const b = document.getElementById(`trip-${id}`); if(b) b.classList.add('dragging'); });
+  multiDrag = { ids, offsetSlot, moved: false, ghost, anchorDay: firstTrip.day, anchorSlot: firstTrip.start_slot };
+  document.addEventListener('mousemove', onMultiMove);
+  document.addEventListener('mouseup',   onMultiUp);
+}
+function onMultiMove(e) {
+  if (!multiDrag) return;
+  multiDrag.moved = true;
+  multiDrag.ghost.style.left = (e.clientX+14)+'px';
+  multiDrag.ghost.style.top  = (e.clientY-10)+'px';
+  const target = getSlotAt(e.clientX, e.clientY);
+  clearDropTargets();
+  if (target) {
+    const newAnchorSlot = Math.max(0, target.slot - multiDrag.offsetSlot);
+    const slotDelta = newAnchorSlot - multiDrag.anchorSlot;
+    const dayDelta  = target.day - multiDrag.anchorDay;
+    multiDrag.ids.forEach(id => {
+      const t = trips.find(x => x.id === id); if (!t) return;
+      const newSlot = Math.max(0, Math.min(SLOTS-t.duration, t.start_slot + slotDelta));
+      const newDay  = Math.max(0, Math.min(5, t.day + dayDelta));
+      const colId   = target.drv || t.driver_id;
+      for (let s = newSlot; s < newSlot+t.duration; s++) {
+        const el = document.getElementById(`ds-${newDay}-${s}-${colId}`);
+        if (el) el.classList.add('drop-target');
+      }
+    });
+    multiDrag.targetDay   = target.day;
+    multiDrag.targetSlot  = newAnchorSlot;
+    multiDrag.targetDrv   = target.drv;
+  }
+}
+async function onMultiUp() {
+  if (!multiDrag) return;
+  document.removeEventListener('mousemove', onMultiMove);
+  document.removeEventListener('mouseup',   onMultiUp);
+  multiDrag.ghost.remove();
+  multiDrag.ids.forEach(id => { const b = document.getElementById(`trip-${id}`); if(b) b.classList.remove('dragging'); });
+  clearDropTargets();
+  if (multiDrag.moved && multiDrag.targetDay !== undefined) {
+    const slotDelta = multiDrag.targetSlot - multiDrag.anchorSlot;
+    const dayDelta  = multiDrag.targetDay  - multiDrag.anchorDay;
+    const updates = multiDrag.ids.map(id => {
+      const t = trips.find(x => x.id === id); if (!t) return null;
+      const newSlot = Math.max(0, Math.min(SLOTS-t.duration, t.start_slot + slotDelta));
+      const newDay  = Math.max(0, Math.min(5, t.day + dayDelta));
+      return { id, newDay, newSlot };
+    }).filter(Boolean);
+    // Applica localmente
+    updates.forEach(u => { const t = trips.find(x => x.id === u.id); if(t){ t.day=u.newDay; t.start_slot=u.newSlot; } });
+    renderTrips();
+    // Salva su Supabase in parallelo
+    await Promise.all(updates.map(u => sb.from('trips').update({ day: u.newDay, start_slot: u.newSlot }).eq('id', u.id)));
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Spostati ${updates.length} viaggi insieme` });
+    toast(`${updates.length} viaggi spostati`);
+    clearSelection();
+  }
+  multiDrag = null;
+}
+
 function getSlotAt(x, y) {
   for (const el of document.elementsFromPoint(x, y))
     if (el.dataset && el.dataset.day !== undefined && el.dataset.slot !== undefined)
-      return { day: +el.dataset.day, slot: +el.dataset.slot };
+      return { day: +el.dataset.day, slot: +el.dataset.slot, drv: el.dataset.drv };
   return null;
 }
 function clearDropTargets() { document.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target')); }
 
-// ── DRAG SELECT ──
+// ── DRAG SELECT (nuova fascia) ──
 function onGridMouseDown(e) {
   if (e.button !== 0) return;
-  const sr = e.target.closest('.slot-row');
+  if (e.ctrlKey || e.metaKey) return; // CTRL gestito da trip block
+  const sr = e.target.closest('.drv-slot');
   if (!sr || e.target.closest('.trip-block')) return;
   if (!canEdit()) return;
-  selDrag = { day: +sr.dataset.day, startSlot: +sr.dataset.slot, endSlot: +sr.dataset.slot, active: true };
+  selDrag = { day: +sr.dataset.day, slot: +sr.dataset.slot, drv: sr.dataset.drv, startSlot: +sr.dataset.slot, endSlot: +sr.dataset.slot, active: true };
   highlightSel();
 }
 function onGridMouseMove(e) {
   if (!selDrag || !selDrag.active) return;
-  const sr = e.target.closest('.slot-row');
-  if (!sr || +sr.dataset.day !== selDrag.day) return;
+  const sr = e.target.closest('.drv-slot');
+  if (!sr || +sr.dataset.day !== selDrag.day || sr.dataset.drv !== selDrag.drv) return;
   selDrag.endSlot = +sr.dataset.slot; highlightSel();
 }
 function onGridCtx(e) {
   e.preventDefault();
-  const sr = e.target.closest('.slot-row');
+  const sr = e.target.closest('.drv-slot');
   if (!sr) return;
   if (!canEdit()) { toast('Non hai i permessi per inserire viaggi'); return; }
-  const day = +sr.dataset.day;
+  const day = +sr.dataset.day, drvId = sr.dataset.drv;
   let lo = +sr.dataset.slot, dur = 1;
-  if (selDrag) { lo = Math.min(selDrag.startSlot, selDrag.endSlot); dur = Math.abs(selDrag.endSlot - selDrag.startSlot) + 1; selDrag = null; clearHighlight(); }
-  showCtxMenu(e.clientX, e.clientY, day, lo, dur);
+  if (selDrag) { lo = Math.min(selDrag.startSlot, selDrag.endSlot); dur = Math.abs(selDrag.endSlot - selDrag.startSlot)+1; selDrag=null; clearHighlight(); }
+  showCtxMenu(e.clientX, e.clientY, day, lo, dur, drvId);
 }
 document.addEventListener('mouseup', () => {
   if (selDrag && selDrag.active) {
     selDrag.active = false;
-    if (!canEdit()) { selDrag = null; clearHighlight(); return; }
-    const lo = Math.min(selDrag.startSlot, selDrag.endSlot);
-    const dur = Math.abs(selDrag.endSlot - selDrag.startSlot) + 1;
-    const day = selDrag.day;
-    selDrag = null; clearHighlight();
-    openTripForm(null, day, lo, dur);
+    if (!canEdit()) { selDrag=null; clearHighlight(); return; }
+    const lo  = Math.min(selDrag.startSlot, selDrag.endSlot);
+    const dur = Math.abs(selDrag.endSlot - selDrag.startSlot)+1;
+    const day = selDrag.day, drvId = selDrag.drv;
+    selDrag=null; clearHighlight();
+    openTripForm(null, day, lo, dur, drvId);
   }
 });
 function highlightSel() {
@@ -923,82 +1006,148 @@ function highlightSel() {
   if (!selDrag) return;
   const lo = Math.min(selDrag.startSlot, selDrag.endSlot), hi = Math.max(selDrag.startSlot, selDrag.endSlot);
   for (let s = lo; s <= hi; s++) {
-    const el = document.getElementById(`sr-${selDrag.day}-${s}`);
-    if (el) { el.classList.add('selecting'); if (s===lo) el.classList.add('sel-top'); if (s===hi) el.classList.add('sel-bot'); }
+    const el = document.getElementById(`ds-${selDrag.day}-${s}-${selDrag.drv}`);
+    if (el) { el.classList.add('selecting'); if(s===lo) el.classList.add('sel-top'); if(s===hi) el.classList.add('sel-bot'); }
   }
 }
 function clearHighlight() { document.querySelectorAll('.selecting,.sel-top,.sel-bot').forEach(e => e.classList.remove('selecting','sel-top','sel-bot')); }
 
-function showCtxMenu(x, y, day, slot, dur) {
+function showCtxMenu(x, y, day, slot, dur, drvId) {
   const ctx = document.getElementById('ctx');
   ctx.innerHTML = `<div class="ctx-label">${DAYS_FULL[day]} · ${slotToTime(slot)}${dur>1?' – '+slotToTime(slot+dur):''}</div>
-    <div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur});hideCtx()">+ Inserisci viaggio</div>`;
+    <div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur},'${drvId||''}');hideCtx()">+ Inserisci viaggio</div>
+    ${selectedTrips.size>0?`<div class="ctx-item" onclick="deleteSelectedTrips();hideCtx()" style="color:var(--red)">🗑️ Elimina ${selectedTrips.size} selezionati</div>`:''}`;
   ctx.style.display='block'; ctx.style.left=x+'px'; ctx.style.top=y+'px';
   setTimeout(() => document.addEventListener('click', hideCtx, { once: true }), 0);
 }
 function hideCtx() { document.getElementById('ctx').style.display='none'; }
 
-// ── FORM VIAGGIO ──
-function openTripForm(id, day, slot, dur) {
+// ── FORM VIAGGIO (con multi-destinazione) ──
+// stops = [{dest, dur}]
+let _tripStops = [];
+
+function openTripForm(id, day, slot, dur, preDriverId) {
   const t = id ? trips.find(x => x.id === id) : null;
-  const sDay = t ? t.day : (day||0), sSlot = t ? t.start_slot : (slot||0), sDur = t ? t.duration : (dur||2);
-  const durOpts = [1,2,3,4,6,8,10,12].map(n => `<option value="${n}" ${sDur===n?'selected':''}>${n===1?'30 min':n%2===0?n/2+' ore':Math.floor(n/2)+'h 30'}</option>`).join('');
-  const drvOpts = drivers.map(d => `<option value="${d.id}" ${t&&t.driver_id===d.id?'selected':''}>${d.name}</option>`).join('');
-  const dayOpts = DAYS_FULL.map((d,i) => `<option value="${i}" ${sDay===i?'selected':''}>${d}</option>`).join('');
+  const sDay  = t ? t.day        : (day||0);
+  const sSlot = t ? t.start_slot : (slot||0);
+  const sDur  = t ? t.duration   : (dur||2);
+
+  // Pre-seleziona autista dalla colonna
+  let preSelDrv = '';
+  if (t) preSelDrv = t.driver_id;
+  else if (preDriverId && preDriverId !== 'jolly') preSelDrv = +preDriverId;
+
+  const drvOpts = drivers.map(d => `<option value="${d.id}" ${preSelDrv===d.id?'selected':''}>${d.name}</option>`).join('');
+  const dayOpts  = DAYS_FULL.map((d,i) => `<option value="${i}" ${sDay===i?'selected':''}>${d}</option>`).join('');
   const slotOpts = Array.from({length:SLOTS},(_,i) => `<option value="${i}" ${sSlot===i?'selected':''}>${slotToTime(i)}</option>`).join('');
   const destList = dests.map(d => `<option value="${d}">`).join('');
+
+  // Inizializza stops
+  if (t) {
+    _tripStops = [{ dest: t.dest, dur: t.duration }];
+  } else {
+    _tripStops = [{ dest: '', dur: sDur }];
+  }
+
+  const vehOpts = `<option value="">-- Nessun veicolo --</option>${vehicles.map(v=>`<option value="${v.id}" ${t&&t.vehicle_id===v.id?'selected':''}>${v.name} (${v.type}) · ${v.plate}</option>`).join('')}`;
+
   showModal(`<h2>${t?'Modifica viaggio':'Nuovo viaggio'}</h2>
-    <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)} – ${slotToTime(sSlot+sDur)}</div>
+    <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)}</div>
     <div class="field"><label>Autista</label><select id="f-drv">${drvOpts}</select></div>
     <div class="frow">
       <div class="field"><label>Giorno</label><select id="f-day" onchange="updSub()">${dayOpts}</select></div>
       <div class="field"><label>Ora inizio</label><select id="f-slot" onchange="updSub()">${slotOpts}</select></div>
     </div>
-    <div class="field"><label>Durata</label><select id="f-dur" onchange="updSub()">${durOpts}</select></div>
-    <div class="field"><label>Destinazione</label>
-      <input list="dl" id="f-dest" value="${t?t.dest:''}" placeholder="Cerca o scrivi…">
+    <div class="field">
+      <label style="display:flex;align-items:center;justify-content:space-between">
+        Destinazioni / Tappe
+        ${!t ? `<button type="button" class="btn sm" onclick="addStop()">+ Tappa</button>` : ''}
+      </label>
       <datalist id="dl">${destList}</datalist>
+      <div class="stop-list" id="stop-list"></div>
+      ${!t ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Ogni tappa crea un viaggio separato nel calendario</div>` : ''}
     </div>
-    <div class="field"><label>Veicolo</label>
-      <select id="f-veh">
-        <option value="">-- Nessun veicolo --</option>
-        ${vehicles.map(v => `<option value="${v.id}" ${t&&t.vehicle_id===v.id?'selected':''}>${v.name} (${v.type}) · ${v.plate}</option>`).join('')}
-      </select>
-    </div>
+    <div class="field"><label>Veicolo</label><select id="f-veh">${vehOpts}</select></div>
     <div class="field"><label>Nota</label><textarea id="f-note">${t?t.note:''}</textarea></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
       <button class="btn primary" onclick="saveTrip(${id||'null'})">Salva</button>
     </div>`);
+  renderStopList();
 }
+
+function durLabel(n) { return n===1?'30m':n%2===0?n/2+'h':Math.floor(n/2)+'h30'; }
+
+function renderStopList() {
+  const list = document.getElementById('stop-list'); if (!list) return;
+  const destList = dests.map(d=>`<option value="${d}">`).join('');
+  list.innerHTML = _tripStops.map((s,i) => {
+    const durOpts = [1,2,3,4,6,8,10,12].map(n=>`<option value="${n}" ${s.dur===n?'selected':''}>${durLabel(n)}</option>`).join('');
+    return `<div class="stop-item">
+      <div class="stop-num">${i+1}</div>
+      <input list="dl" value="${s.dest}" placeholder="Destinazione…" oninput="_tripStops[${i}].dest=this.value">
+      <select class="stop-dur" onchange="_tripStops[${i}].dur=+this.value;updSub()">${durOpts}</select>
+      ${_tripStops.length>1?`<button class="stop-rm" onclick="removeStop(${i})">✕</button>`:'<div style="width:20px"></div>'}
+    </div>`;
+  }).join('');
+  updSub();
+}
+
+function addStop() {
+  _tripStops.push({ dest: '', dur: 2 });
+  renderStopList();
+}
+function removeStop(i) {
+  _tripStops.splice(i, 1);
+  renderStopList();
+}
+
 function updSub() {
-  const el = document.getElementById('msub');
-  if (el) el.textContent = `${DAYS_FULL[+document.getElementById('f-day').value]} · ${slotToTime(+document.getElementById('f-slot').value)} – ${slotToTime(+document.getElementById('f-slot').value + +document.getElementById('f-dur').value)}`;
+  const el = document.getElementById('msub'); if (!el) return;
+  const slot = +document.getElementById('f-slot').value;
+  const day  = +document.getElementById('f-day').value;
+  const totalDur = _tripStops.reduce((s,x)=>s+x.dur,0);
+  el.textContent = `${DAYS_FULL[day]} · ${slotToTime(slot)} – ${slotToTime(slot+totalDur)}`;
 }
+
 async function saveTrip(id) {
-  const driver_id = +document.getElementById('f-drv').value;
-  const day = +document.getElementById('f-day').value;
+  const driver_id  = +document.getElementById('f-drv').value;
+  const day        = +document.getElementById('f-day').value;
   const start_slot = +document.getElementById('f-slot').value;
-  const duration = +document.getElementById('f-dur').value;
-  const dest = document.getElementById('f-dest').value.trim();
-  const note = document.getElementById('f-note').value.trim();
+  const note       = document.getElementById('f-note').value.trim();
   const vehicle_id = document.getElementById('f-veh').value ? +document.getElementById('f-veh').value : null;
-  if (!dest) { toast('Inserisci una destinazione'); return; }
   const drv = drivers.find(d => d.id === driver_id);
   const veh = vehicle_id ? vehicles.find(v => v.id === vehicle_id) : null;
-  let error;
+
+  if (_tripStops.some(s => !s.dest.trim())) { toast('Inserisci tutte le destinazioni'); return; }
+
   if (id) {
-    ({ error } = await sb.from('trips').update({ driver_id, day, start_slot, duration, dest, note, vehicle_id }).eq('id', id));
-    if (!error) Object.assign(trips.find(x => x.id === id), { driver_id, day, start_slot, duration, dest, note, vehicle_id });
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}${veh?' · '+veh.name:''}` });
+    // MODIFICA: aggiorna il viaggio singolo
+    const s = _tripStops[0];
+    const { error } = await sb.from('trips').update({ driver_id, day, start_slot, duration: s.dur, dest: s.dest.trim(), note, vehicle_id }).eq('id', id);
+    if (error) { toast('Errore nel salvataggio'); return; }
+    Object.assign(trips.find(x=>x.id===id), { driver_id, day, start_slot, duration: s.dur, dest: s.dest.trim(), note, vehicle_id });
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${s.dest}` });
+    toast('Viaggio aggiornato');
   } else {
-    const { data, error: err } = await sb.from('trips').insert({ driver_id, day, start_slot, duration, dest, note, vehicle_id, week_offset: weekOffset, created_by: currentUser.name }).select().single();
-    error = err;
-    if (!error) trips.push(data);
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name} → ${dest}${veh?' · '+veh.name:''}` });
+    // NUOVO: crea N viaggi consecutivi
+    let curSlot = start_slot;
+    const inserted = [];
+    for (const s of _tripStops) {
+      const { data, error } = await sb.from('trips').insert({
+        driver_id, day, start_slot: curSlot, duration: s.dur, dest: s.dest.trim(),
+        note, vehicle_id, week_offset: weekOffset, created_by: currentUser.name
+      }).select().single();
+      if (error) { toast(`Errore su tappa "${s.dest}"`); break; }
+      trips.push(data);
+      inserted.push(s.dest.trim());
+      curSlot += s.dur;
+    }
+    const destNames = inserted.join(' → ');
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name}: ${destNames}${veh?' · '+veh.name:''}` });
+    toast(`${inserted.length} viaggio${inserted.length>1?'i':''} creato${inserted.length>1?'i':''}`);
   }
-  if (error) { toast('Errore nel salvataggio'); return; }
-  closeModal(); renderTrips(); toast('Viaggio salvato');
+  closeModal(); renderTrips();
 }
 function showTripModal(id) {
   const t = trips.find(x => x.id === id); if (!t) return;
@@ -1017,22 +1166,51 @@ function showTripModal(id) {
       <button class="btn" onclick="closeModal()">Chiudi</button>
     </div>`);
 }
-async function deleteTrip(id) {
-  const t = trips.find(x => x.id === id), drv = drivers.find(d => d.id === t.driver_id);
-  showModal(`<h2>Conferma eliminazione</h2>
-    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare il viaggio di <strong>${drv.name}</strong> verso <strong>${t.dest}</strong>?</p>
+// ── ELIMINA CON CONFERMA TESTO ──
+function safeDeleteModal(title, desc, onConfirm) {
+  showModal(`<h2>⚠️ ${title}</h2>
+    <p style="color:var(--text2);line-height:1.6;margin-bottom:12px">${desc}</p>
+    <div class="confirm-input-wrap">
+      <input id="confirm-input" type="text" placeholder='Scrivi "elimina" per confermare'
+        oninput="document.getElementById('confirm-del-btn').disabled=this.value.toLowerCase()!=='elimina'"
+        onkeydown="if(event.key==='Enter'&&this.value.toLowerCase()==='elimina'){closeModal();(${onConfirm})()}">
+    </div>
+    <div class="confirm-hint">Digita <strong>elimina</strong> per confermare</div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn danger" onclick="closeModal();_deleteTrip(${id})">Elimina</button>
+      <button id="confirm-del-btn" class="btn danger" disabled onclick="closeModal();(${onConfirm})()">Elimina</button>
     </div>`);
+  setTimeout(()=>document.getElementById('confirm-input')?.focus(),100);
+}
+
+async function deleteTrip(id) {
+  const t = trips.find(x => x.id === id), drv = drivers.find(d => d.id === t.driver_id);
+  safeDeleteModal('Elimina viaggio',
+    `Stai per eliminare il viaggio di <strong>${drv?.name||'?'}</strong> verso <strong>${t.dest}</strong>.`,
+    `()=>_deleteTrip(${id})`);
 }
 async function _deleteTrip(id) {
   const t = trips.find(x => x.id === id), drv = drivers.find(d => d.id === t.driver_id);
   const { error } = await sb.from('trips').delete().eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
   trips = trips.filter(x => x.id !== id);
-  await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminato ${drv.name} → ${t.dest}` });
+  await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminato ${drv?.name||'?'} → ${t.dest}` });
   renderTrips(); toast('Viaggio eliminato');
+}
+
+async function deleteSelectedTrips() {
+  const ids = [...selectedTrips];
+  if (!ids.length) return;
+  safeDeleteModal('Elimina selezione',
+    `Stai per eliminare <strong>${ids.length} viaggi</strong> selezionati. Questa azione non è reversibile.`,
+    `()=>_deleteSelectedTrips()`);
+}
+async function _deleteSelectedTrips() {
+  const ids = [...selectedTrips];
+  await Promise.all(ids.map(id => sb.from('trips').delete().eq('id', id)));
+  trips = trips.filter(x => !ids.includes(x.id));
+  await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminati ${ids.length} viaggi (selezione multipla)` });
+  clearSelection(); renderTrips(); toast(`${ids.length} viaggi eliminati`);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1083,10 +1261,9 @@ async function editDest(oldName) {
   dests.sort(); renderDests(); toast('Destinazione aggiornata');
 }
 async function deleteDest(name) {
-  showModal(`<h2>Conferma eliminazione</h2>
-    <p style="margin-bottom:20px;color:var(--text2)">Eliminare la destinazione <strong>${name}</strong>?</p>
-    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
-    <button class="btn danger" onclick="closeModal();_deleteDest('${name}')">Elimina</button></div>`);
+  safeDeleteModal('Elimina destinazione',
+    `Stai per eliminare la destinazione <strong>${name}</strong>.`,
+    `()=>_deleteDest('${name}')`);
 }
 async function _deleteDest(name) {
   const { error } = await sb.from('destinations').delete().eq('name', name);
@@ -1138,10 +1315,9 @@ async function saveDriver(id) {
 }
 async function deleteDriver(id) {
   const drv = drivers.find(d=>d.id===id);
-  showModal(`<h2>Conferma eliminazione</h2>
-    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare l'autista <strong>${drv.name}</strong>?<br>Verranno eliminati anche tutti i suoi viaggi!</p>
-    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
-    <button class="btn danger" onclick="closeModal();_deleteDriver(${id})">Elimina</button></div>`);
+  safeDeleteModal('Elimina autista',
+    `Stai per eliminare <strong>${drv.name}</strong>.<br>Verranno eliminati anche tutti i suoi viaggi!`,
+    `()=>_deleteDriver(${id})`);
 }
 async function _deleteDriver(id) {
   const { error } = await sb.from('drivers').update({ active:false }).eq('id', id);
@@ -1462,10 +1638,9 @@ async function saveVehicle(id) {
 }
 async function deleteVehicle(id) {
   const v = vehicles.find(x => x.id === id);
-  showModal(`<h2>Conferma eliminazione</h2>
-    <p style="margin-bottom:20px;color:var(--text2)">Eliminare il veicolo <strong>${v.name}</strong> (${v.plate})?</p>
-    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
-    <button class="btn danger" onclick="closeModal();_deleteVehicle(${id})">Elimina</button></div>`);
+  safeDeleteModal('Elimina veicolo',
+    `Stai per eliminare il veicolo <strong>${v.name}</strong> (${v.plate}).`,
+    `()=>_deleteVehicle(${id})`);
 }
 async function _deleteVehicle(id) {
   const { error } = await sb.from('vehicles').update({ active: false }).eq('id', id);
@@ -1539,6 +1714,12 @@ async function completeDeadline(id) {
   renderVehPanel(); checkDeadlineNotifications(); toast('Scadenza completata ✅');
 }
 async function deleteDeadline(id) {
+  const dl = deadlines.find(x=>x.id===id), v = vehicles.find(x=>x.id===dl?.vehicle_id);
+  safeDeleteModal('Elimina scadenza',
+    `Stai per eliminare la scadenza <strong>${dl?.type}</strong> di ${v?.name||'?'}.`,
+    `()=>_deleteDeadline(${id})`);
+}
+async function _deleteDeadline(id) {
   const { error } = await sb.from('vehicle_deadlines').delete().eq('id', id);
   if (error) { toast('Errore'); return; }
   deadlines = deadlines.filter(x => x.id !== id);
@@ -1601,6 +1782,12 @@ async function saveHistory(id) {
   closeModal(); renderVehPanel();
 }
 async function deleteHistory(id) {
+  const h = vehicleHist.find(x=>x.id===id), v = vehicles.find(x=>x.id===h?.vehicle_id);
+  safeDeleteModal('Elimina intervento',
+    `Stai per eliminare l'intervento <strong>${h?.type}</strong> su ${v?.name||'?'} del ${h?fmtDateShort(h.date):'?'}.`,
+    `()=>_deleteHistory(${id})`);
+}
+async function _deleteHistory(id) {
   const { error } = await sb.from('vehicle_history').delete().eq('id', id);
   if (error) { toast('Errore'); return; }
   vehicleHist = vehicleHist.filter(x => x.id !== id);
@@ -1654,6 +1841,12 @@ async function saveStop(id) {
   closeModal(); renderVehPanel();
 }
 async function deleteStop(id) {
+  const s = vehicleStops.find(x=>x.id===id), v = vehicles.find(x=>x.id===s?.vehicle_id);
+  safeDeleteModal('Elimina fermo',
+    `Stai per eliminare il fermo di <strong>${v?.name||'?'}</strong> (${s?.reason}).`,
+    `()=>_deleteStop(${id})`);
+}
+async function _deleteStop(id) {
   const { error } = await sb.from('vehicle_stops').delete().eq('id', id);
   if (error) { toast('Errore'); return; }
   vehicleStops = vehicleStops.filter(x => x.id !== id);
@@ -1728,10 +1921,9 @@ async function saveUser(existingEmail) {
   closeModal(); renderUsers();
 }
 function confirmDeleteUser(email, name) {
-  showModal(`<h2>Conferma eliminazione</h2>
-    <p style="margin-bottom:20px;color:var(--text2);line-height:1.6">Eliminare l'accesso di <strong>${name}</strong> (${email})?</p>
-    <div class="btn-row"><button class="btn" onclick="closeModal()">Annulla</button>
-    <button class="btn danger" onclick="deleteUser('${email}')">Elimina accesso</button></div>`);
+  safeDeleteModal('Rimuovi accesso',
+    `Stai per rimuovere l'accesso di <strong>${name}</strong> (${email}).<br>L'utente non potrà più accedere.`,
+    `()=>deleteUser('${email}')`);
 }
 async function deleteUser(email) {
   const { error } = await sb.from('user_roles').delete().eq('email', email);
