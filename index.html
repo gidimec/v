@@ -311,8 +311,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
         <button onclick="prevWeek()">‹</button>
         <span id="week-label">…</span>
         <button onclick="nextWeek()">›</button>
-        <div style="width:1px;height:16px;background:var(--border2);margin:0 2px"></div>
-        <button id="view-mode-btn" onclick="toggleCalMode()" title="Cambia visualizzazione" style="font-size:13px;padding:4px 8px">🕐</button>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:14px">
@@ -750,7 +748,17 @@ function renderCalOraria() {
   document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
   const grid = document.getElementById('cal-grid');
 
-  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa' }];
+  const cols = [...drivers, { id: 'extra', name: 'Extra', color: '#888' }];
+
+  // Fasce orarie con colori di sfondo
+  const FASCIA_BG = [
+    { from: 0,  to: (12-START_H)*2, label: 'Mattina',     bg: 'rgba(255,243,205,0.35)' },  // 6-12
+    { from: (12-START_H)*2, to: (19-START_H)*2, label: 'Pomeriggio', bg: 'rgba(207,232,252,0.35)' }, // 12-19
+    { from: (19-START_H)*2, to: SLOTS,          label: 'Sera',       bg: 'rgba(235,228,252,0.3)'  }, // 19-22
+  ];
+  function fasciaForSlotLocal(s) { return FASCIA_BG.find(f => s >= f.from && s < f.to) || FASCIA_BG[0]; }
+  // Prima slot di ogni fascia per mostrare l'etichetta
+  const fasciaFirstSlot = new Set(FASCIA_BG.map(f => f.from));
 
   let html = `<div style="display:flex;align-items:stretch;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
     <div style="width:52px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
@@ -760,7 +768,7 @@ function renderCalOraria() {
         <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
       </div>
       <div class="cal-drv-headers">
-        ${cols.map(c => `<div class="cal-drv-hcell${c.id==='jolly'?' jolly':''}" style="color:${c.id==='jolly'?'var(--text3)':c.color||'var(--text2)'}">${c.name.split(' ')[0]}</div>`).join('')}
+        ${cols.map(c => `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="color:${c.id==='extra'?'var(--text3)':c.color||'var(--text2)'}">${c.name.split(' ')[0]}</div>`).join('')}
       </div>
     </div>`;
   });
@@ -768,14 +776,27 @@ function renderCalOraria() {
 
   for (let s = 0; s < SLOTS; s++) {
     const isHour = s % 2 === 0;
+    const fascia = fasciaForSlotLocal(s);
+    const isFirstOfFascia = fasciaFirstSlot.has(s);
+
+    // Etichetta verticale fascia nella cella orario
+    let timeLabel = '';
+    if (isHour) timeLabel = slotToTime(s);
+    if (isFirstOfFascia) {
+      // quanti slot dura questa fascia
+      const fasciaSlots = fascia.to - fascia.from;
+      const fasciaH = fasciaSlots * SLOT_H;
+      timeLabel = `<span style="position:absolute;right:6px;top:${SLOT_H/2}px;writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.08em;pointer-events:none;height:${fasciaH-4}px;display:flex;align-items:center;justify-content:center;opacity:.6">${fascia.label.toUpperCase()}</span>` + timeLabel;
+    }
+
     html += `<div class="cal-body-row">
-      <div class="cal-time-cell${isHour?' hour':''}" style="border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'}">
-        ${isHour ? slotToTime(s) : ''}
+      <div class="cal-time-cell${isHour?' hour':''}" style="border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'};background:${fascia.bg};position:relative">
+        ${timeLabel}
       </div>`;
     for (let di = 0; di < 6; di++) {
-      html += `<div class="cal-day-col">`;
+      html += `<div class="cal-day-col" style="background:${fascia.bg}">`;
       cols.forEach(c => {
-        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}"></div>`;
+        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="background:transparent"></div>`;
       });
       html += `</div>`;
     }
@@ -807,7 +828,7 @@ function renderTurni() {
   const dates = getWeekDates();
   document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
   const grid = document.getElementById('cal-grid');
-  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
+  const cols = [...drivers, { id: 'extra', name: 'Extra', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
   const nCols = cols.length; // colonne per giorno
   // Larghezza minima per colonna autista
   const colMinW = 100;
@@ -865,11 +886,11 @@ function renderTurni() {
 
 function renderTurniTrips() {
   document.querySelectorAll('.turni-block').forEach(e => e.remove());
-  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
+  const cols = [...drivers, { id: 'extra', name: 'Extra', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
 
   trips.forEach(t => {
     const drv = drivers.find(dr => dr.id === t.driver_id);
-    const col  = drv || cols.find(c => c.id === 'jolly');
+    const col  = drv || cols.find(c => c.id === 'extra');
     const colId = drv ? drv.id : 'jolly';
     const fascia = fasciaForSlot(t.start_slot);
     const cell = document.getElementById(`tc-${t.day}-${fascia.id}-${colId}`);
@@ -921,7 +942,7 @@ function onTurniDrop(e, day, fasciaId, colId) {
   const fascia = FASCE.find(f => f.id === fasciaId);
   // Sposta all'inizio della fascia se il viaggio non ci sta già
   const newSlot = (fascia.from - START_H) * 2;
-  const newDrvId = colId === 'jolly' ? null : +colId;
+  const newDrvId = colId === 'extra' ? null : +colId;
   t.day = day; t.start_slot = newSlot; if (newDrvId) t.driver_id = newDrvId;
   renderTurniTrips();
   sb.from('trips').update({ day, start_slot: newSlot, driver_id: t.driver_id }).eq('id', tripId).then(({error}) => {
@@ -938,17 +959,17 @@ function onTurniColClick(e, day, fasciaId, colId) {
 function openTurniForm(day, fasciaId, colId) {
   const fascia = FASCE.find(f => f.id === fasciaId);
   const startSlot = (fascia.from - START_H) * 2;
-  const preDriverId = colId !== 'jolly' ? colId : '';
+  const preDriverId = colId !== 'extra' ? colId : '';
   openTripForm(null, day, startSlot, 2, preDriverId);
 }
 
 function renderTrips() {
   document.querySelectorAll('.trip-block').forEach(e => e.remove());
-  const cols = [...drivers, { id: 'jolly', name: 'Jolly', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
+  const cols = [...drivers, { id: 'extra', name: 'Extra', color: '#aaa', light: '#f0f0ee', text_color: '#555' }];
 
   trips.forEach(t => {
     const drv = drivers.find(dr => dr.id === t.driver_id);
-    const col = drv || cols.find(c => c.id === 'jolly');
+    const col = drv || cols.find(c => c.id === 'extra');
     const colId = drv ? drv.id : 'jolly';
 
     const cell = document.getElementById(`ds-${t.day}-${t.start_slot}-${colId}`);
@@ -965,13 +986,17 @@ function renderTrips() {
     block.className = 'trip-block' + (selectedTrips.has(t.id) ? ' selected' : '');
     block.id = `trip-${t.id}`;
     block.dataset.tripId = t.id;
-    block.dataset.driverId = t.driver_id || 'jolly';
+    block.dataset.driverId = t.driver_id || 'extra';
     block.style.cssText = `top:1px;left:calc(${idx*pct}% + 1px);width:calc(${pct}% - 2px);height:${t.duration * SLOT_H - 3}px;background:${col.light};color:${col.text_color};border-left-color:${col.color}`;
     block.title = `${col.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot+t.duration)}`;
     const veh = vehicles.find(v => v.id === t.vehicle_id);
+    const extraName = getExtraName(t);
+    const displayNote = getDisplayNote(t);
+    const blockLabel = drv ? drv.name.split(' ')[0] : (extraName || 'Extra');
     block.innerHTML = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${t.dest}</div>
+      <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:500;opacity:.8">${blockLabel}</div>
       ${veh ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px;opacity:.75">🚛 ${veh.name}</div>` : ''}
-      ${t.note ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:500;margin-top:1px;border-top:1px solid currentColor;opacity:.55;padding-top:1px">📝 ${t.note}</div>` : ''}`;
+      ${displayNote ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:600;margin-top:1px;border-top:1px solid currentColor;padding-top:1px;opacity:.7">📝 ${displayNote}</div>` : ''}`;
     block.addEventListener('mousedown', e => {
       if (!canEdit()) return;
       e.stopPropagation();
@@ -1042,7 +1067,7 @@ function startTripDrag(e, tripId) {
   const rect  = block.getBoundingClientRect();
   const offsetSlot = Math.floor((e.clientY - rect.top) / SLOT_H);
   const ghost = document.getElementById('ghost');
-  const col = drv || { light:'#f0f0ee', text_color:'#555', color:'#aaa', name:'Jolly' };
+  const col = drv || { light:'#f0f0ee', text_color:'#555', color:'#aaa', name:'Extra' };
   ghost.style.cssText = `display:block;width:120px;height:${t.duration*SLOT_H-3}px;background:${col.light};color:${col.text_color};border-left:3px solid ${col.color};left:${e.clientX+14}px;top:${e.clientY-10}px`;
   ghost.innerHTML = `<div style="font-size:10px;font-weight:600;padding:3px 6px">${t.dest}</div>`;
   block.classList.add('dragging');
@@ -1084,7 +1109,7 @@ async function onTripUp() {
     const drv = drivers.find(d => d.id === t.driver_id);
     const oldInfo = `${DAYS[t.day]} ${slotToTime(t.start_slot)}`;
     // Se trascina su colonna autista diversa, aggiorna driver_id
-    const newDrvId = (tripDrag.targetDrv === 'jolly') ? null : +tripDrag.targetDrv;
+    const newDrvId = (tripDrag.targetDrv === 'extra') ? null : +tripDrag.targetDrv;
     t.day = tripDrag.targetDay; t.start_slot = tripDrag.targetSlot; t.driver_id = newDrvId || t.driver_id;
     renderTrips();
     const { error } = await sb.from('trips').update({ day: t.day, start_slot: t.start_slot, driver_id: t.driver_id }).eq('id', t.id);
@@ -1247,8 +1272,16 @@ function openTripForm(id, day, slot, dur, preDriverId) {
 
   // Pre-seleziona autista dalla colonna
   let preSelDrv = '';
+  const isExtra = preDriverId === 'extra' || (t && !t.driver_id);
   if (t) preSelDrv = t.driver_id;
-  else if (preDriverId && preDriverId !== 'jolly') preSelDrv = +preDriverId;
+  else if (preDriverId && preDriverId !== 'extra') preSelDrv = +preDriverId;
+
+  // Campo autista: select per autisti normali, testo libero per Extra
+  const drvField = isExtra
+    ? `<div class="field"><label>Nome (libero)</label>
+        <input id="f-drv-name" value="${t ? (t.extra_name||'') : ''}" placeholder="es. Mario Rossi, Corriere, ecc.">
+       </div>`
+    : `<div class="field"><label>Autista</label><select id="f-drv">${drvOpts}</select></div>`;
 
   const drvOpts = drivers.map(d => `<option value="${d.id}" ${preSelDrv===d.id?'selected':''}>${d.name}</option>`).join('');
   const dayOpts  = DAYS_FULL.map((d,i) => `<option value="${i}" ${sDay===i?'selected':''}>${d}</option>`).join('');
@@ -1267,7 +1300,7 @@ function openTripForm(id, day, slot, dur, preDriverId) {
 
   showModal(`<h2>${t?'Modifica viaggio':'Nuovo viaggio'}</h2>
     <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)}</div>
-    <div class="field"><label>Autista</label><select id="f-drv">${drvOpts}</select></div>
+    ${drvField}
     <div class="frow">
       <div class="field"><label>Giorno</label><select id="f-day" onchange="updSub()">${dayOpts}</select></div>
       <div class="field"><label>Ora inizio</label><select id="f-slot" onchange="updSub()">${slotOpts}</select></div>
@@ -1324,27 +1357,34 @@ function updSub() {
 }
 
 async function saveTrip(id) {
-  const driver_id  = +document.getElementById('f-drv').value;
+  // Determina se è una riga extra (nessun autista)
+  const drvSelect  = document.getElementById('f-drv');
+  const drvNameInp = document.getElementById('f-drv-name');
+  const isExtraRow = !!drvNameInp;
+  const driver_id  = isExtraRow ? null : +drvSelect.value;
+  const extraName  = isExtraRow ? drvNameInp.value.trim() : '';
+
   const day        = +document.getElementById('f-day').value;
   const start_slot = +document.getElementById('f-slot').value;
   const duration   = +document.getElementById('f-dur').value;
-  const note       = document.getElementById('f-note').value.trim();
+  const noteRaw    = document.getElementById('f-note').value.trim();
+  // Per le righe extra conserviamo il nome nel campo note con prefisso speciale
+  const note       = isExtraRow && extraName ? `[EXTRA:${extraName}] ${noteRaw}`.trim() : noteRaw;
   const vehicle_id = document.getElementById('f-veh').value ? +document.getElementById('f-veh').value : null;
-  const drv = drivers.find(d => d.id === driver_id);
+  const drv = driver_id ? drivers.find(d => d.id === driver_id) : null;
   const veh = vehicle_id ? vehicles.find(v => v.id === vehicle_id) : null;
 
   if (_tripStops.some(s => !s.dest.trim())) { toast('Inserisci tutte le destinazioni'); return; }
+  if (isExtraRow && !extraName) { toast('Inserisci un nome per il viaggio Extra'); return; }
 
   if (id) {
-    // MODIFICA: aggiorna il viaggio singolo
     const dest = _tripStops[0].dest.trim();
     const { error } = await sb.from('trips').update({ driver_id, day, start_slot, duration, dest, note, vehicle_id }).eq('id', id);
     if (error) { toast('Errore nel salvataggio'); return; }
     Object.assign(trips.find(x=>x.id===id), { driver_id, day, start_slot, duration, dest, note, vehicle_id });
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv.name} → ${dest}` });
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Modificato ${drv?.name||extraName||'?'} → ${dest}` });
     toast('Viaggio aggiornato');
   } else {
-    // NUOVO: crea N viaggi consecutivi, tutti con la stessa durata
     let curSlot = start_slot;
     const inserted = [];
     for (const s of _tripStops) {
@@ -1358,23 +1398,54 @@ async function saveTrip(id) {
       curSlot += duration;
     }
     const destNames = inserted.join(' → ');
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv.name}: ${destNames}${veh?' · '+veh.name:''}` });
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv?.name||extraName||'Extra'}: ${destNames}${veh?' · '+veh.name:''}` });
     toast(`${inserted.length} viaggio${inserted.length>1?'i':''} creato${inserted.length>1?'i':''}`);
   }
   closeModal();
   if (calMode === 'turni') renderTurniTrips(); else renderTrips();
 }
+    for (const s of _tripStops) {
+      const { data, error } = await sb.from('trips').insert({
+        driver_id, day, start_slot: curSlot, duration, dest: s.dest.trim(),
+        note, vehicle_id, week_offset: weekOffset, created_by: currentUser.name
+      }).select().single();
+      if (error) { toast(`Errore su tappa "${s.dest}"`); break; }
+      trips.push(data);
+      inserted.push(s.dest.trim());
+      curSlot += duration;
+    }
+    const destNames = inserted.join(' → ');
+    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv?.name||extraName||'Extra'}: ${destNames}${veh?' · '+veh.name:''}` });
+    toast(`${inserted.length} viaggio${inserted.length>1?'i':''} creato${inserted.length>1?'i':''}`);
+  }
+  closeModal();
+  if (calMode === 'turni') renderTurniTrips(); else renderTrips();
+}
+function getExtraName(t) {
+  // Estrae il nome libero dal campo note se è un viaggio Extra
+  if (t.driver_id) return null;
+  const m = (t.note||'').match(/^\[EXTRA:(.+?)\]/);
+  return m ? m[1] : 'Extra';
+}
+function getDisplayNote(t) {
+  // Restituisce la nota senza il prefisso [EXTRA:...]
+  return (t.note||'').replace(/^\[EXTRA:.+?\]\s*/, '');
+}
 function showTripModal(id) {
   const t = trips.find(x => x.id === id); if (!t) return;
   const drv = drivers.find(d => d.id === t.driver_id);
+  const extraName = getExtraName(t);
+  const displayNote = getDisplayNote(t);
+  const nameLabel = drv ? drv.name : (extraName || 'Extra');
+  const dotColor = drv ? drv.color : '#888';
   showModal(`<h2>Dettaglio viaggio</h2>
     <div class="modal-sub" style="display:flex;align-items:center;gap:8px">
-      <div style="width:10px;height:10px;border-radius:50%;background:${drv.color};flex-shrink:0"></div>
-      <strong>${drv.name}</strong> &nbsp;·&nbsp; ${DAYS_FULL[t.day]} &nbsp;·&nbsp; ${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}
+      <div style="width:10px;height:10px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
+      <strong>${nameLabel}</strong> &nbsp;·&nbsp; ${DAYS_FULL[t.day]} &nbsp;·&nbsp; ${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + t.duration)}
     </div>
     <div class="field"><label>Destinazione</label><div style="padding:4px 0">${t.dest}</div></div>
     ${t.vehicle_id ? `<div class="field"><label>Veicolo</label><div style="padding:4px 0">🚛 ${vehicles.find(v=>v.id===t.vehicle_id)?.name||''} · ${vehicles.find(v=>v.id===t.vehicle_id)?.plate||''}</div></div>` : ''}
-    ${t.note ? `<div class="field"><label>Nota</label><div style="padding:4px 0">${t.note}</div></div>` : ''}
+    ${displayNote ? `<div class="field"><label>Nota</label><div style="padding:4px 0">${displayNote}</div></div>` : ''}
     <div class="field"><label>Inserito da</label><div style="padding:4px 0;color:var(--text2)">${t.created_by}</div></div>
     <div class="btn-row">
       ${canEdit() ? `<button class="btn danger" onclick="deleteTrip(${id})">Elimina</button><button class="btn primary" onclick="openTripForm(${id})">Modifica</button>` : ''}
