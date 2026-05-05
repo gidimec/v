@@ -10,7 +10,6 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
 
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -753,16 +752,14 @@ function renderCalOraria() {
 
   // Fasce orarie con colori di sfondo
   const FASCIA_BG = [
-    { from: 0,  to: (12-START_H)*2, label: 'Mattina',     bg: 'rgba(255,243,205,0.35)' },  // 6-12
-    { from: (12-START_H)*2, to: (19-START_H)*2, label: 'Pomeriggio', bg: 'rgba(207,232,252,0.35)' }, // 12-19
-    { from: (19-START_H)*2, to: SLOTS,          label: 'Sera',       bg: 'rgba(235,228,252,0.3)'  }, // 19-22
+    { from: 0,               to: (12-START_H)*2,   label: 'Mattina',     bg: 'rgba(255,243,205,0.35)' },
+    { from: (12-START_H)*2,  to: (19-START_H)*2,   label: 'Pomeriggio',  bg: 'rgba(207,232,252,0.35)' },
+    { from: (19-START_H)*2,  to: SLOTS,            label: 'Sera',        bg: 'rgba(235,228,252,0.30)' },
   ];
   function fasciaForSlotLocal(s) { return FASCIA_BG.find(f => s >= f.from && s < f.to) || FASCIA_BG[0]; }
-  // Prima slot di ogni fascia per mostrare l'etichetta
-  const fasciaFirstSlot = new Set(FASCIA_BG.map(f => f.from));
 
   let html = `<div style="display:flex;align-items:stretch;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
-    <div style="width:52px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
+    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
   dates.forEach((d, di) => {
     html += `<div class="cal-day-group">
       <div class="cal-day-label${isToday(d)?' today':''}">
@@ -775,24 +772,25 @@ function renderCalOraria() {
   });
   html += '</div>';
 
+  // Calcola prima riga di ogni fascia per l'etichetta
+  let lastFasciaId = null;
+
   for (let s = 0; s < SLOTS; s++) {
     const isHour = s % 2 === 0;
     const fascia = fasciaForSlotLocal(s);
-    const isFirstOfFascia = fasciaFirstSlot.has(s);
+    const isFirstOfFascia = fascia.label !== lastFasciaId;
+    if (isFirstOfFascia) lastFasciaId = fascia.label;
 
-    // Etichetta verticale fascia nella cella orario
-    let timeLabel = '';
-    if (isHour) timeLabel = slotToTime(s);
-    if (isFirstOfFascia) {
-      // quanti slot dura questa fascia
-      const fasciaSlots = fascia.to - fascia.from;
-      const fasciaH = fasciaSlots * SLOT_H;
-      timeLabel = `<span style="position:absolute;right:6px;top:${SLOT_H/2}px;writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.08em;pointer-events:none;height:${fasciaH-4}px;display:flex;align-items:center;justify-content:center;opacity:.6">${fascia.label.toUpperCase()}</span>` + timeLabel;
-    }
+    // Colonna ore: sinistra = ora, destra = etichetta fascia (solo prima riga)
+    const hourText = isHour ? slotToTime(s) : '';
+    const fasciaTag = isFirstOfFascia
+      ? `<span style="position:absolute;right:0;top:0;bottom:0;width:28px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--text3);pointer-events:none;height:${(fascia.to-fascia.from)*SLOT_H}px">${fascia.label.toUpperCase()}</span>`
+      : '';
 
     html += `<div class="cal-body-row">
-      <div class="cal-time-cell${isHour?' hour':''}" style="border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'};background:${fascia.bg};position:relative">
-        ${timeLabel}
+      <div class="cal-time-cell${isHour?' hour':''}" style="width:64px;border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'};background:${fascia.bg};position:relative;display:flex;align-items:center;justify-content:flex-start;padding-right:30px">
+        <span style="flex:1;text-align:right;padding-right:4px">${hourText}</span>
+        ${fasciaTag}
       </div>`;
     for (let di = 0; di < 6; di++) {
       html += `<div class="cal-day-col" style="background:${fascia.bg}">`;
@@ -1277,36 +1275,31 @@ function openTripForm(id, day, slot, dur, preDriverId) {
   if (t) preSelDrv = t.driver_id;
   else if (preDriverId && preDriverId !== 'extra') preSelDrv = +preDriverId;
 
-  // Campo autista: select per autisti normali, testo libero per Extra
-  const drvField = isExtra
-    ? `<div class="field"><label>Nome (libero)</label>
-        <input id="f-drv-name" value="${t ? (t.extra_name||'') : ''}" placeholder="es. Mario Rossi, Corriere, ecc.">
-       </div>`
-    : `<div class="field"><label>Autista</label><select id="f-drv">${drvOpts}</select></div>`;
-
   const drvOpts = drivers.map(d => `<option value="${d.id}" ${preSelDrv===d.id?'selected':''}>${d.name}</option>`).join('');
   const dayOpts  = DAYS_FULL.map((d,i) => `<option value="${i}" ${sDay===i?'selected':''}>${d}</option>`).join('');
   const slotOpts = Array.from({length:SLOTS},(_,i) => `<option value="${i}" ${sSlot===i?'selected':''}>${slotToTime(i)}</option>`).join('');
-  const destList = dests.map(d => `<option value="${d}">`).join('');
 
-  // Inizializza stops
-  if (t) {
-    _tripStops = [{ dest: t.dest }];
-  } else {
-    _tripStops = [{ dest: '' }];
-  }
+  // Campo autista: select per autisti normali, testo libero per Extra
+  const extraNameVal = t ? getExtraName(t)||'' : '';
+  const drvField = isExtra
+    ? `<div class="field"><label>Nome (libero)</label>
+        <input id="f-drv-name" value="${extraNameVal}" placeholder="es. Mario Rossi, Corriere…"></div>`
+    : `<div class="field"><label>Autista</label><select id="f-drv">${drvOpts}</select></div>`;
 
-  const durOpts = [1,2,3,4,6,8,10,12].map(n => `<option value="${n}" ${sDur===n?'selected':''}>${n===1?'30 min':n%2===0?n/2+' ore':Math.floor(n/2)+'h 30'}</option>`).join('');
+  const noteVal = t ? getDisplayNote(t) : '';
   const vehOpts = `<option value="">-- Nessun veicolo --</option>${vehicles.map(v=>`<option value="${v.id}" ${t&&t.vehicle_id===v.id?'selected':''}>${v.name} (${v.type}) · ${v.plate}</option>`).join('')}`;
 
+  // Inizializza stops
+  _tripStops = t ? [{ dest: t.dest }] : [{ dest: '' }];
+
   showModal(`<h2>${t?'Modifica viaggio':'Nuovo viaggio'}</h2>
-    <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)}</div>
+    <input type="hidden" id="f-dur-hidden" value="${sDur}">
+    <div class="modal-sub" id="msub">${DAYS_FULL[sDay]} · ${slotToTime(sSlot)} – ${slotToTime(sSlot+sDur)}</div>
     ${drvField}
     <div class="frow">
       <div class="field"><label>Giorno</label><select id="f-day" onchange="updSub()">${dayOpts}</select></div>
       <div class="field"><label>Ora inizio</label><select id="f-slot" onchange="updSub()">${slotOpts}</select></div>
     </div>
-    <div class="field"><label>Durata (per ogni tappa)</label><select id="f-dur" onchange="updSub()">${durOpts}</select></div>
     <div class="field">
       <label style="display:flex;align-items:center;justify-content:space-between">
         Destinazioni / Tappe
@@ -1317,7 +1310,7 @@ function openTripForm(id, day, slot, dur, preDriverId) {
       ${!t ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Ogni tappa crea un viaggio separato nel calendario</div>` : ''}
     </div>
     <div class="field"><label>Veicolo</label><select id="f-veh">${vehOpts}</select></div>
-    <div class="field"><label>Nota</label><textarea id="f-note">${t?t.note:''}</textarea></div>
+    <div class="field"><label>Nota</label><textarea id="f-note">${noteVal}</textarea></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
       <button class="btn primary" onclick="saveTrip(${id||'null'})">Salva</button>
@@ -1352,13 +1345,10 @@ function updSub() {
   const el = document.getElementById('msub'); if (!el) return;
   const slot = +(document.getElementById('f-slot')?.value||0);
   const day  = +(document.getElementById('f-day')?.value||0);
-  const dur  = +(document.getElementById('f-dur')?.value||2);
-  const totalDur = dur * _tripStops.length;
-  el.textContent = `${DAYS_FULL[day]} · ${slotToTime(slot)} – ${slotToTime(slot+totalDur)}`;
+  el.textContent = `${DAYS_FULL[day]} · ${slotToTime(slot)}`;
 }
 
 async function saveTrip(id) {
-  // Determina se è una riga extra (nessun autista)
   const drvSelect  = document.getElementById('f-drv');
   const drvNameInp = document.getElementById('f-drv-name');
   const isExtraRow = !!drvNameInp;
@@ -1367,9 +1357,10 @@ async function saveTrip(id) {
 
   const day        = +document.getElementById('f-day').value;
   const start_slot = +document.getElementById('f-slot').value;
-  const duration   = +document.getElementById('f-dur').value;
+  // Durata: usa quella del viaggio esistente o quella passata dalla selezione (data-dur)
+  const durEl = document.getElementById('f-dur-hidden');
+  const duration = durEl ? +durEl.value : 2;
   const noteRaw    = document.getElementById('f-note').value.trim();
-  // Per le righe extra conserviamo il nome nel campo note con prefisso speciale
   const note       = isExtraRow && extraName ? `[EXTRA:${extraName}] ${noteRaw}`.trim() : noteRaw;
   const vehicle_id = document.getElementById('f-veh').value ? +document.getElementById('f-veh').value : null;
   const drv = driver_id ? drivers.find(d => d.id === driver_id) : null;
