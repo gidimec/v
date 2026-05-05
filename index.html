@@ -10,6 +10,7 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
 
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -1387,23 +1388,6 @@ async function saveTrip(id) {
   } else {
     let curSlot = start_slot;
     const inserted = [];
-    for (const s of _tripStops) {
-      const { data, error } = await sb.from('trips').insert({
-        driver_id, day, start_slot: curSlot, duration, dest: s.dest.trim(),
-        note, vehicle_id, week_offset: weekOffset, created_by: currentUser.name
-      }).select().single();
-      if (error) { toast(`Errore su tappa "${s.dest}"`); break; }
-      trips.push(data);
-      inserted.push(s.dest.trim());
-      curSlot += duration;
-    }
-    const destNames = inserted.join(' → ');
-    await sb.from('activity_log').insert({ username: currentUser.name, action: `Inserito ${drv?.name||extraName||'Extra'}: ${destNames}${veh?' · '+veh.name:''}` });
-    toast(`${inserted.length} viaggio${inserted.length>1?'i':''} creato${inserted.length>1?'i':''}`);
-  }
-  closeModal();
-  if (calMode === 'turni') renderTurniTrips(); else renderTrips();
-}
     for (const s of _tripStops) {
       const { data, error } = await sb.from('trips').insert({
         driver_id, day, start_slot: curSlot, duration, dest: s.dest.trim(),
