@@ -890,7 +890,8 @@ function renderTurniTrips() {
     block.innerHTML = `
       <div class="turni-block-dest">${t.dest}</div>
       <div class="turni-block-time">🕐 ${timeStr}</div>
-      ${veh ? `<div class="turni-block-veh">🚛 ${veh.name}</div>` : ''}`;
+      ${veh ? `<div class="turni-block-veh">🚛 ${veh.name}</div>` : ''}
+      ${t.note ? `<div style="font-size:10px;font-weight:500;margin-top:2px;padding-top:2px;border-top:1px solid currentColor;opacity:.6">📝 ${t.note}</div>` : ''}`;
 
     block.addEventListener('click', e => {
       if (e.ctrlKey || e.metaKey) { toggleTripSelection(t.id); block.classList.toggle('selected', selectedTrips.has(t.id)); return; }
@@ -969,8 +970,8 @@ function renderTrips() {
     block.title = `${col.name} · ${t.dest}\n${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot+t.duration)}`;
     const veh = vehicles.find(v => v.id === t.vehicle_id);
     block.innerHTML = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${t.dest}</div>
-      ${veh ? `<div style="opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px">🚛 ${veh.name}</div>` : ''}
-      ${t.note ? `<div style="opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px">${t.note}</div>` : ''}`;
+      ${veh ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px;opacity:.75">🚛 ${veh.name}</div>` : ''}
+      ${t.note ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:500;margin-top:1px;border-top:1px solid currentColor;opacity:.55;padding-top:1px">📝 ${t.note}</div>` : ''}`;
     block.addEventListener('mousedown', e => {
       if (!canEdit()) return;
       e.stopPropagation();
@@ -1380,7 +1381,17 @@ function showTripModal(id) {
       <button class="btn" onclick="closeModal()">Chiudi</button>
     </div>`);
 }
-// ── ELIMINA CON CONFERMA TESTO ──
+// ── ELIMINA VIAGGIO — semplice conferma ──
+function simpleDeleteModal(title, desc, onConfirm) {
+  showModal(`<h2>🗑️ ${title}</h2>
+    <p style="color:var(--text2);line-height:1.6;margin-bottom:20px">${desc}</p>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn danger" onclick="closeModal();(${onConfirm})()">Sì, elimina</button>
+    </div>`);
+}
+
+// ── ELIMINA ANAGRAFICA — richiede digitare "elimina" ──
 function safeDeleteModal(title, desc, onConfirm) {
   showModal(`<h2>⚠️ ${title}</h2>
     <p style="color:var(--text2);line-height:1.6;margin-bottom:12px">${desc}</p>
@@ -1399,8 +1410,8 @@ function safeDeleteModal(title, desc, onConfirm) {
 
 async function deleteTrip(id) {
   const t = trips.find(x => x.id === id), drv = drivers.find(d => d.id === t.driver_id);
-  safeDeleteModal('Elimina viaggio',
-    `Stai per eliminare il viaggio di <strong>${drv?.name||'?'}</strong> verso <strong>${t.dest}</strong>.`,
+  simpleDeleteModal('Elimina viaggio',
+    `Eliminare il viaggio di <strong>${drv?.name||'?'}</strong> verso <strong>${t.dest}</strong>?`,
     `()=>_deleteTrip(${id})`);
 }
 async function _deleteTrip(id) {
@@ -1534,8 +1545,10 @@ async function deleteDriver(id) {
     `()=>_deleteDriver(${id})`);
 }
 async function _deleteDriver(id) {
+  const drv = drivers.find(d=>d.id===id);
   const { error } = await sb.from('drivers').update({ active:false }).eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
+  await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminato autista: ${drv.name}` });
   drivers = drivers.filter(d=>d.id!==id); trips = trips.filter(t=>t.driver_id!==id);
   renderDrivers(); renderLegend(); renderCal(); toast('Autista eliminato');
 }
@@ -1857,8 +1870,10 @@ async function deleteVehicle(id) {
     `()=>_deleteVehicle(${id})`);
 }
 async function _deleteVehicle(id) {
+  const v = vehicles.find(x => x.id === id);
   const { error } = await sb.from('vehicles').update({ active: false }).eq('id', id);
   if (error) { toast('Errore eliminazione'); return; }
+  await sb.from('activity_log').insert({ username: currentUser.name, action: `Eliminato veicolo: ${v.name} (${v.plate})` });
   vehicles = vehicles.filter(x => x.id !== id); renderVehPanel(); toast('Veicolo eliminato');
 }
 
