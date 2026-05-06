@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Viaggi Autisti</title>
+<title>Gi.Di.- Viaggi</title>
 
 <script>
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
@@ -844,7 +844,7 @@ function renderTurni() {
         <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
       </div>
       <div style="display:flex;border-top:0.5px solid var(--border)">
-        ${cols.map(c => `<div class="turni-drv-hcell${c.id==='jolly'?' jolly':''}" style="color:${c.id==='jolly'?'var(--text3)':c.color};min-width:${colMinW}px">${c.name.split(' ')[0]}</div>`).join('')}
+        ${cols.map(c => `<div class="turni-drv-hcell${c.id==='extra'?' jolly':''}" style="color:${c.id==='extra'?'var(--text3)':c.color};min-width:${colMinW}px">${c.name.split(' ')[0]}</div>`).join('')}
       </div>
     </div>`;
   });
@@ -889,8 +889,8 @@ function renderTurniTrips() {
 
   trips.forEach(t => {
     const drv = drivers.find(dr => dr.id === t.driver_id);
-    const col  = drv || cols.find(c => c.id === 'extra');
-    const colId = drv ? drv.id : 'jolly';
+    const col  = drv || { id:'extra', name:'Extra', color:'#888', light:'#f3f3f1', text_color:'#444' };
+    const colId = drv ? drv.id : 'extra';
     const fascia = fasciaForSlot(t.start_slot);
     const cell = document.getElementById(`tc-${t.day}-${fascia.id}-${colId}`);
     if (!cell) return;
@@ -968,8 +968,8 @@ function renderTrips() {
 
   trips.forEach(t => {
     const drv = drivers.find(dr => dr.id === t.driver_id);
-    const col = drv || cols.find(c => c.id === 'extra');
-    const colId = drv ? drv.id : 'jolly';
+    const col = drv || { id:'extra', name:'Extra', color:'#888', light:'#f3f3f1', text_color:'#444' };
+    const colId = drv ? drv.id : 'extra';
 
     const cell = document.getElementById(`ds-${t.day}-${t.start_slot}-${colId}`);
     if (!cell) return;
@@ -993,7 +993,6 @@ function renderTrips() {
     const displayNote = getDisplayNote(t);
     const blockLabel = drv ? drv.name.split(' ')[0] : (extraName || 'Extra');
     block.innerHTML = `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${t.dest}</div>
-      <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:500;opacity:.8">${blockLabel}</div>
       ${veh ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px;opacity:.75">🚛 ${veh.name}</div>` : ''}
       ${displayNote ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:600;margin-top:1px;border-top:1px solid currentColor;padding-top:1px;opacity:.7">📝 ${displayNote}</div>` : ''}`;
     block.addEventListener('mousedown', e => {
