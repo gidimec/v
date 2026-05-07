@@ -157,7 +157,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .drv-slot.sel-bot{border-bottom:2px solid var(--blue)!important}
 .drv-slot.drop-target{background:rgba(55,138,221,.2)}
 
-/* ── TRIP SELEZIONE MULTIPLA ── */
+/* ── TRIP RESIZE HANDLE ── */
+.trip-resize-handle{position:absolute;bottom:0;left:0;right:0;height:6px;cursor:ns-resize;border-radius:0 0 4px 4px;background:transparent;transition:background .15s}
+.trip-block:hover .trip-resize-handle{background:rgba(0,0,0,.15)}
+.trip-block.resizing{opacity:.8;cursor:ns-resize}
 .trip-block.selected{outline:2px solid var(--blue);outline-offset:1px;box-shadow:0 0 0 3px rgba(55,138,221,.25)}
 .multi-drag-ghost{position:fixed;pointer-events:none;background:var(--blue);color:#fff;border-radius:var(--radius);padding:6px 12px;font-size:12px;font-weight:500;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.3)}
 
@@ -1008,24 +1011,21 @@ function renderTrips() {
     const blockLabel = drv ? drv.name.split(' ')[0] : (extraName || 'Extra');
     block.innerHTML = `<div style="overflow:hidden;word-break:break-word;font-weight:600;line-height:1.3">${t.dest}</div>
       ${veh ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px;opacity:.75">🚛 ${veh.name}</div>` : ''}
-      ${displayNote ? `<div style="font-size:10px;font-weight:600;margin-top:1px;border-top:1px solid currentColor;padding-top:1px;opacity:.7;overflow:hidden;word-break:break-word;line-height:1.3">📝 ${displayNote}</div>` : ''}`;
+      ${displayNote ? `<div style="font-size:10px;font-weight:600;margin-top:1px;border-top:1px solid currentColor;padding-top:1px;opacity:.7;overflow:hidden;word-break:break-word;line-height:1.3">📝 ${displayNote}</div>` : ''}
+      <div class="trip-resize-handle" data-trip-id="${t.id}"></div>`;
+
     block.addEventListener('mousedown', e => {
       if (!canEdit()) return;
+      // Se click sulla maniglia resize
+      if (e.target.classList.contains('trip-resize-handle')) {
+        e.stopPropagation();
+        startTripResize(e, t.id);
+        return;
+      }
       e.stopPropagation();
-      if (e.ctrlKey || e.metaKey) {
-        // CTRL+click: toggle selezione multipla
-        toggleTripSelection(t.id);
-        return;
-      }
-      if (selectedTrips.size > 0 && selectedTrips.has(t.id)) {
-        // Avvia multi-drag
-        startMultiDrag(e);
-        return;
-      }
-      if (selectedTrips.size > 0) {
-        // Click su blocco non selezionato: deseleziona tutto
-        clearSelection();
-      }
+      if (e.ctrlKey || e.metaKey) { toggleTripSelection(t.id); return; }
+      if (selectedTrips.size > 0 && selectedTrips.has(t.id)) { startMultiDrag(e); return; }
+      if (selectedTrips.size > 0) clearSelection();
       startTripDrag(e, t.id);
     });
     block.addEventListener('click', e => {
@@ -1134,7 +1134,75 @@ async function onTripUp() {
   tripDrag = null;
 }
 
-// ── MULTI DRAG ──
+// ── RESIZE TRIP (bordo inferiore) ──
+let tripResize = null;
+
+function startTripResize(e, tripId) {
+  const t = trips.find(x => x.id === tripId);
+  const block = document.getElementById(`trip-${tripId}`);
+  block.classList.add('resizing');
+  tripResize = { tripId, origDuration: t.duration, startY: e.clientY };
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup',   onResizeUp);
+  // Mostra tooltip durata
+  showResizeTooltip(e.clientX, e.clientY, t);
+}
+
+function onResizeMove(e) {
+  if (!tripResize) return;
+  const t = trips.find(x => x.id === tripResize.tripId);
+  const deltaSlots = Math.round((e.clientY - tripResize.startY) / SLOT_H);
+  const newDur = Math.max(1, Math.min(SLOTS - t.start_slot, tripResize.origDuration + deltaSlots));
+  // Aggiorna visivamente il blocco
+  const block = document.getElementById(`trip-${tripResize.tripId}`);
+  if (block) block.style.height = `${newDur * SLOT_H - 3}px`;
+  tripResize.newDuration = newDur;
+  // Aggiorna tooltip
+  showResizeTooltip(e.clientX, e.clientY, t, newDur);
+}
+
+async function onResizeUp() {
+  if (!tripResize) return;
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup',   onResizeUp);
+  hideResizeTooltip();
+  const block = document.getElementById(`trip-${tripResize.tripId}`);
+  if (block) block.classList.remove('resizing');
+
+  const newDur = tripResize.newDuration;
+  if (newDur && newDur !== tripResize.origDuration) {
+    const t = trips.find(x => x.id === tripResize.tripId);
+    t.duration = newDur;
+    renderTrips();
+    const { error } = await sb.from('trips').update({ duration: newDur }).eq('id', t.id);
+    if (!error) {
+      await sb.from('activity_log').insert({ username: currentUser.name, action: `Durata aggiornata: ${t.dest} → ${slotToTime(t.start_slot)}–${slotToTime(t.start_slot+newDur)}` });
+      toast(`Durata aggiornata: ${newDur < 2 ? '30 min' : newDur/2 + ' ore'}`);
+    } else {
+      t.duration = tripResize.origDuration;
+      renderTrips();
+      toast('Errore salvataggio');
+    }
+  }
+  tripResize = null;
+}
+
+function showResizeTooltip(x, y, t, dur) {
+  const d = dur || t.duration;
+  let tip = document.getElementById('resize-tip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'resize-tip';
+    tip.style.cssText = 'position:fixed;background:var(--text);color:var(--bg);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;pointer-events:none;z-index:9999;transition:none';
+    document.body.appendChild(tip);
+  }
+  tip.textContent = `${slotToTime(t.start_slot)} – ${slotToTime(t.start_slot + d)} (${d < 2 ? '30 min' : d/2 + 'h'})`;
+  tip.style.left = (x + 14) + 'px';
+  tip.style.top  = (y - 28) + 'px';
+}
+function hideResizeTooltip() {
+  document.getElementById('resize-tip')?.remove();
+}
 function startMultiDrag(e) {
   const ids = [...selectedTrips];
   const ghost = document.createElement('div');
