@@ -3,13 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gi.Di.- Viaggi</title>
+<title>Viaggi Autisti</title>
 
 <script>
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -314,7 +313,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:14px">
-      <div class="legend" id="legend"></div>
+      <!-- legend rimossa: nomi autisti già visibili nelle colonne -->
       <!-- Campana notifiche -->
       <button class="user-btn" id="notif-btn" onclick="toggleNotifPopup()" style="position:relative;display:none">
         🔔<span id="notif-count" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:8px;min-width:14px;height:14px;padding:0 3px;display:flex;align-items:center;justify-content:center"></span>
@@ -758,15 +757,23 @@ function renderCalOraria() {
   ];
   function fasciaForSlotLocal(s) { return FASCIA_BG.find(f => s >= f.from && s < f.to) || FASCIA_BG[0]; }
 
+  // Per sabato (di=5) mostriamo SOLO la colonna Extra
+  // Gli altri giorni (lun-ven) hanno tutte le colonne autisti
+  const colsFull = [...drivers, { id: 'extra', name: 'Extra', color: '#888' }];
+  const colsSab  = [{ id: 'extra', name: 'Extra', color: '#888' }];
+
   let html = `<div style="display:flex;align-items:stretch;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
     <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
   dates.forEach((d, di) => {
-    html += `<div class="cal-day-group">
+    const isSab = di === 5;
+    const dayCols = isSab ? colsSab : colsFull;
+    // Sabato flex:1, gli altri flex:2 → sabato è ~metà della larghezza di un giorno normale
+    html += `<div class="cal-day-group" style="flex:${isSab?1:2}">
       <div class="cal-day-label${isToday(d)?' today':''}">
         <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
       </div>
       <div class="cal-drv-headers">
-        ${cols.map(c => `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="color:${c.id==='extra'?'var(--text3)':c.color||'var(--text2)'}">${c.name.split(' ')[0]}</div>`).join('')}
+        ${dayCols.map(c => `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="color:${c.id==='extra'?'var(--text3)':c.color||'var(--text2)'}">${c.name.split(' ')[0]}</div>`).join('')}
       </div>
     </div>`;
   });
@@ -793,8 +800,10 @@ function renderCalOraria() {
         ${fasciaTag}
       </div>`;
     for (let di = 0; di < 6; di++) {
-      html += `<div class="cal-day-col" style="background:${fascia.bg}">`;
-      cols.forEach(c => {
+      const isSab = di === 5;
+      const dayCols = isSab ? colsSab : colsFull;
+      html += `<div class="cal-day-col" style="flex:${isSab?1:2};background:${fascia.bg}">`;
+      dayCols.forEach(c => {
         html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="background:transparent"></div>`;
       });
       html += `</div>`;
@@ -1174,17 +1183,24 @@ async function onMultiUp() {
   if (multiDrag.moved && multiDrag.targetDay !== undefined) {
     const slotDelta = multiDrag.targetSlot - multiDrag.anchorSlot;
     const dayDelta  = multiDrag.targetDay  - multiDrag.anchorDay;
+    const newDrvId  = multiDrag.targetDrv === 'extra' ? null
+                    : multiDrag.targetDrv ? +multiDrag.targetDrv
+                    : undefined; // undefined = non cambiare autista
     const updates = multiDrag.ids.map(id => {
       const t = trips.find(x => x.id === id); if (!t) return null;
-      const newSlot = Math.max(0, Math.min(SLOTS-t.duration, t.start_slot + slotDelta));
-      const newDay  = Math.max(0, Math.min(5, t.day + dayDelta));
-      return { id, newDay, newSlot };
+      const newSlot   = Math.max(0, Math.min(SLOTS-t.duration, t.start_slot + slotDelta));
+      const newDay    = Math.max(0, Math.min(5, t.day + dayDelta));
+      const driverId  = newDrvId !== undefined ? newDrvId : t.driver_id;
+      return { id, newDay, newSlot, driver_id: driverId };
     }).filter(Boolean);
-    // Applica localmente
-    updates.forEach(u => { const t = trips.find(x => x.id === u.id); if(t){ t.day=u.newDay; t.start_slot=u.newSlot; } });
+    updates.forEach(u => {
+      const t = trips.find(x => x.id === u.id);
+      if (t) { t.day = u.newDay; t.start_slot = u.newSlot; t.driver_id = u.driver_id; }
+    });
     renderTrips();
-    // Salva su Supabase in parallelo
-    await Promise.all(updates.map(u => sb.from('trips').update({ day: u.newDay, start_slot: u.newSlot }).eq('id', u.id)));
+    await Promise.all(updates.map(u =>
+      sb.from('trips').update({ day: u.newDay, start_slot: u.newSlot, driver_id: u.driver_id }).eq('id', u.id)
+    ));
     await sb.from('activity_log').insert({ username: currentUser.name, action: `Spostati ${updates.length} viaggi insieme` });
     toast(`${updates.length} viaggi spostati`);
     clearSelection();
@@ -1653,13 +1669,13 @@ function renderFleet(body) {
     const tripCount = trips.filter(t => t.vehicle_id === v.id).length;
     return `<div class="veh-card" id="vcard-${v.id}">
       <div class="veh-card-head" onclick="toggleVehCard(${v.id})">
+        <div style="flex-shrink:0;margin-right:4px">${getVehicleStatusBadge(v.id)}</div>
         <div class="veh-icon">🚛</div>
         <div class="veh-info">
           <div class="veh-name">${v.name} <span style="font-size:11px;color:var(--text2);font-weight:400">${v.plate}</span></div>
           <div class="veh-sub">${v.type}${v.brand?' · '+v.brand:''}${v.model?' '+v.model:''}${v.year?' ('+v.year+')':''}${v.km?' · '+v.km.toLocaleString()+' km':''}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          ${getVehicleStatusBadge(v.id)}
+        <div style="display:flex;align-items:center;flex-shrink:0">
           <span style="color:var(--text3);font-size:11px">›</span>
         </div>
       </div>
