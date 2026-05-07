@@ -9,6 +9,7 @@
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -747,8 +748,6 @@ function renderCalOraria() {
   document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
   const grid = document.getElementById('cal-grid');
 
-  const cols = [...drivers, { id: 'extra', name: 'Extra', color: '#888' }];
-
   // Fasce orarie con colori di sfondo
   const FASCIA_BG = [
     { from: 0,               to: (12-START_H)*2,   label: 'Mattina',     bg: 'rgba(255,243,205,0.35)' },
@@ -757,60 +756,63 @@ function renderCalOraria() {
   ];
   function fasciaForSlotLocal(s) { return FASCIA_BG.find(f => s >= f.from && s < f.to) || FASCIA_BG[0]; }
 
-  // Per sabato (di=5) mostriamo SOLO la colonna Extra
-  // Gli altri giorni (lun-ven) hanno tutte le colonne autisti
+  // Sabato = solo colonna Extra; Lun-Ven = autisti + Extra
   const colsFull = [...drivers, { id: 'extra', name: 'Extra', color: '#888' }];
   const colsSab  = [{ id: 'extra', name: 'Extra', color: '#888' }];
 
-  let html = `<div style="display:flex;align-items:stretch;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
+  // Wrapper con min-width per scrollabilità orizzontale
+  const nFull = colsFull.length;
+  const minW = 64 + 5 * nFull * 80 + 80; // 5 giorni pieni + sabato
+
+  let html = `<div style="min-width:${minW}px">`;
+
+  // HEADER
+  html += `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
     <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
   dates.forEach((d, di) => {
     const isSab = di === 5;
     const dayCols = isSab ? colsSab : colsFull;
-    // Sabato flex:1, gli altri flex:2 → sabato è ~metà della larghezza di un giorno normale
-    html += `<div class="cal-day-group" style="flex:${isSab?1:2}">
+    html += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2)">
       <div class="cal-day-label${isToday(d)?' today':''}">
         <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
       </div>
-      <div class="cal-drv-headers">
-        ${dayCols.map(c => `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="color:${c.id==='extra'?'var(--text3)':c.color||'var(--text2)'}">${c.name.split(' ')[0]}</div>`).join('')}
+      <div style="display:flex;border-top:0.5px solid var(--border)">
+        ${dayCols.map(c=>`<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="flex:1;color:${c.id==='extra'?'var(--text3)':c.color}">${c.name.split(' ')[0]}</div>`).join('')}
       </div>
     </div>`;
   });
   html += '</div>';
 
-  // Calcola prima riga di ogni fascia per l'etichetta
+  // BODY ROWS
   let lastFasciaId = null;
-
   for (let s = 0; s < SLOTS; s++) {
     const isHour = s % 2 === 0;
     const fascia = fasciaForSlotLocal(s);
     const isFirstOfFascia = fascia.label !== lastFasciaId;
     if (isFirstOfFascia) lastFasciaId = fascia.label;
 
-    // Colonna ore: sinistra = ora, destra = etichetta fascia (solo prima riga)
     const hourText = isHour ? slotToTime(s) : '';
     const fasciaTag = isFirstOfFascia
-      ? `<span style="position:absolute;right:0;top:0;bottom:0;width:28px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--text3);pointer-events:none;height:${(fascia.to-fascia.from)*SLOT_H}px">${fascia.label.toUpperCase()}</span>`
+      ? `<span style="position:absolute;right:0;top:0;width:26px;height:${(fascia.to-fascia.from)*SLOT_H}px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--text3);pointer-events:none">${fascia.label.toUpperCase()}</span>`
       : '';
 
-    html += `<div class="cal-body-row">
-      <div class="cal-time-cell${isHour?' hour':''}" style="width:64px;border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'};background:${fascia.bg};position:relative;display:flex;align-items:center;justify-content:flex-start;padding-right:30px">
-        <span style="flex:1;text-align:right;padding-right:4px">${hourText}</span>
-        ${fasciaTag}
+    html += `<div style="display:flex;background:${fascia.bg}">
+      <div class="cal-time-cell${isHour?' hour':''}" style="width:64px;flex-shrink:0;border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'};background:${fascia.bg};position:relative;padding-right:28px">
+        ${hourText}${fasciaTag}
       </div>`;
     for (let di = 0; di < 6; di++) {
       const isSab = di === 5;
       const dayCols = isSab ? colsSab : colsFull;
-      html += `<div class="cal-day-col" style="flex:${isSab?1:2};background:${fascia.bg}">`;
+      html += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;display:flex;border-left:0.5px solid var(--border2)">`;
       dayCols.forEach(c => {
-        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="background:transparent"></div>`;
+        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border)"></div>`;
       });
       html += `</div>`;
     }
     html += `</div>`;
   }
 
+  html += '</div>'; // close min-width wrapper
   grid.innerHTML = html;
   grid.onmousedown   = onGridMouseDown;
   grid.onmousemove   = onGridMouseMove;
