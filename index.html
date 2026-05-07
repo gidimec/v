@@ -10,6 +10,7 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
 
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -77,8 +78,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .sb-badge{position:absolute;top:2px;right:2px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:8px;min-width:14px;height:14px;display:flex;align-items:center;justify-content:center;padding:0 3px;pointer-events:none}
 
 /* ── CALENDAR WRAPPER ── */
-.cal-wrap{flex:1;overflow:auto}
-.cal{display:block;min-width:700px}
+.cal-wrap{flex:1;overflow:auto;position:relative}
+.cal{width:100%;height:100%}
 .ch-empty{border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
 .ch-day{padding:7px 4px;text-align:center;border-bottom:0.5px solid var(--border2);border-left:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3}
 .ch-day .dow{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
@@ -547,11 +548,10 @@ async function onLogin(user) {
   document.getElementById('user-label').textContent = currentUser.name;
   hideLoginScreen();
   await loadAll();
-  renderLegend();
-  renderCal();
   updateUIForRole();
-  // Controlla scadenze e mostra notifiche
   checkDeadlineNotifications();
+  // Aspetta che il DOM sia visibile prima di renderizzare la griglia
+  requestAnimationFrame(() => { requestAnimationFrame(() => { renderCal(); }); });
 }
 
 function updateUIForRole() {
