@@ -408,6 +408,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 <div id="modal-area"></div>
 <div id="ghost" class="trip-ghost" style="display:none"></div>
 <div id="notif-popup" style="display:none"></div>
+<datalist id="dl-dests"></datalist>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -519,6 +520,9 @@ async function loadAll() {
   deadlines     = dl || [];
   vehicleHist   = vh || [];
   vehicleStops  = vs || [];
+  // Aggiorna datalist globale
+  const dlEl = document.getElementById('dl-dests');
+  if (dlEl) dlEl.innerHTML = dests.map(d => `<option value="${d}">`).join('');
 }
 
 async function loadTrips() {
@@ -1119,7 +1123,8 @@ async function onTripUp() {
     const oldInfo = `${DAYS[t.day]} ${slotToTime(t.start_slot)}`;
     // Se trascina su colonna autista diversa, aggiorna driver_id
     const newDrvId = (tripDrag.targetDrv === 'extra') ? null : +tripDrag.targetDrv;
-    t.day = tripDrag.targetDay; t.start_slot = tripDrag.targetSlot; t.driver_id = newDrvId || t.driver_id;
+    t.day = tripDrag.targetDay; t.start_slot = tripDrag.targetSlot;
+    t.driver_id = (tripDrag.targetDrv !== undefined) ? newDrvId : t.driver_id;
     renderTrips();
     const { error } = await sb.from('trips').update({ day: t.day, start_slot: t.start_slot, driver_id: t.driver_id }).eq('id', t.id);
     if (!error) {
@@ -1322,7 +1327,6 @@ function openTripForm(id, day, slot, dur, preDriverId) {
         Destinazioni / Tappe
         ${!t ? `<button type="button" class="btn sm" onclick="addStop()">+ Tappa</button>` : ''}
       </label>
-      <datalist id="dl">${dests.map(d=>`<option value="${d}">`).join('')}</datalist>
       <div class="stop-list" id="stop-list"></div>
       ${!t ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Ogni tappa crea un viaggio separato nel calendario</div>` : ''}
     </div>
@@ -1343,7 +1347,7 @@ function renderStopList() {
   list.innerHTML = _tripStops.map((s,i) => {
     return `<div class="stop-item">
       <div class="stop-num">${i+1}</div>
-      <input list="dl" value="${s.dest}" placeholder="Destinazione…" oninput="_tripStops[${i}].dest=this.value">
+      <input list="dl-dests" value="${s.dest}" placeholder="Destinazione…" oninput="_tripStops[${i}].dest=this.value">
       ${_tripStops.length>1?`<button class="stop-rm" onclick="removeStop(${i})">✕</button>`:'<div style="width:20px"></div>'}
     </div>`;
   }).join('');
