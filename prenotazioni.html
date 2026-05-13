@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prenota un Mezzo</title>
+<script>
+  const SUPABASE_URL = '';
+  const SUPABASE_KEY = '';
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fff;--bg2:#f7f7f5;--bg3:#f0efe9;
+  --text:#1a1a1a;--text2:#666;--text3:#999;
+  --border:rgba(0,0,0,.1);--border2:rgba(0,0,0,.2);
+  --blue:#378ADD;--blue-bg:#e6f1fb;--blue-dark:#0C447C;
+  --green:#1D9E75;--green-bg:#e1f5ee;--green-dark:#085041;
+  --red:#E24B4A;--red-bg:#fcebeb;--red-dark:#791F1F;
+  --orange:#D85A30;--orange-bg:#faece7;--orange-dark:#4A1B0C;
+  --yellow:#BA7517;--yellow-bg:#faeeda;--yellow-dark:#412402;
+  --radius:8px;--radius-lg:12px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;
+  --text:#f5f5f5;--text2:#aaa;--text3:#555;
+  --border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.2);
+  --blue-bg:#0c2d4a;--green-bg:#0a2a1f;--red-bg:#2a0808;--orange-bg:#2a1508;--yellow-bg:#2a1e04;
+}}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:var(--bg);color:var(--text);user-select:none}
+.login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
+.login-card{background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:32px;width:340px;max-width:100%;box-shadow:0 8px 32px rgba(0,0,0,.1)}
+.login-card h2{font-size:20px;font-weight:600;margin-bottom:4px}
+.login-card p{font-size:13px;color:var(--text2);margin-bottom:24px}
+.app{display:flex;height:100dvh;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:10;flex-shrink:0}
+.topbar-title{font-size:15px;font-weight:600}
+.week-nav{display:flex;align-items:center;gap:6px;margin-left:10px}
+.week-nav button{border:0.5px solid var(--border2);background:transparent;border-radius:var(--radius);padding:4px 10px;cursor:pointer;font-size:12px;color:var(--text)}
+.week-nav span{font-size:12px;color:var(--text2);font-weight:500;min-width:130px;text-align:center}
+.user-btn{display:flex;align-items:center;gap:6px;padding:5px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;cursor:pointer;background:transparent;color:var(--text)}
+.user-btn:hover{background:var(--bg2)}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--blue-bg);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--blue-dark);flex-shrink:0}
+.main{display:flex;flex:1;overflow:hidden}
+.sidebar{width:52px;background:var(--bg2);border-right:0.5px solid var(--border);display:flex;flex-direction:column;padding:8px 4px;gap:4px;align-items:center;flex-shrink:0}
+.sb-icon{width:36px;height:36px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;border:0.5px solid transparent;color:var(--text2);transition:all .15s}
+.sb-icon:hover,.sb-icon.active{background:var(--bg);border-color:var(--border2);color:var(--text)}
+.panel{flex:1;overflow:auto;padding:16px}
+.tab-bar{display:flex;gap:4px;margin-bottom:14px}
+.tab{padding:5px 14px;border-radius:var(--radius);font-size:12px;cursor:pointer;border:0.5px solid transparent;color:var(--text2)}
+.tab:hover{background:var(--bg2)}
+.tab.active{background:var(--bg);border-color:var(--border2);color:var(--text);font-weight:500}
+.cal-wrap{overflow:auto}
+.cal-tbl{border-collapse:collapse;width:100%;min-width:620px}
+.cal-tbl th{padding:7px 6px;text-align:center;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;border-bottom:0.5px solid var(--border2);border-right:0.5px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:2;white-space:nowrap}
+.cal-tbl th:first-child{text-align:left;width:100px;position:sticky;left:0;z-index:3;border-right:0.5px solid var(--border2)}
+.cal-tbl th.today-col{color:var(--blue)}
+.cal-tbl td{padding:4px;border-bottom:0.5px solid var(--border);border-right:0.5px solid var(--border);vertical-align:top;min-width:100px}
+.cal-tbl td:first-child{background:var(--bg2);border-right:0.5px solid var(--border2);position:sticky;left:0;z-index:1;padding:8px 10px;min-width:100px}
+.veh-label{font-weight:600;font-size:12px}
+.veh-plate{font-size:10px;color:var(--text2);margin-top:1px}
+.cell-inner{min-height:54px}
+.add-btn-cell{display:flex;align-items:center;justify-content:center;min-height:54px;cursor:pointer;border-radius:var(--radius);border:1px dashed var(--border2);color:var(--text3);font-size:20px;transition:all .15s}
+.add-btn-cell:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.add-btn-small{display:flex;align-items:center;justify-content:center;height:24px;cursor:pointer;border-radius:var(--radius);border:1px dashed var(--border);color:var(--text3);font-size:14px;margin-top:3px;transition:all .15s}
+.add-btn-small:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.bk-block{border-radius:5px;padding:4px 7px;margin-bottom:3px;border-left:3px solid transparent;cursor:pointer;font-size:11px;line-height:1.3}
+.bk-block:hover{box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.bk-slot{font-size:9px;font-weight:700;opacity:.7;text-transform:uppercase;letter-spacing:.04em}
+.bk-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-dest{opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+.blocked-cell{background:repeating-linear-gradient(45deg,rgba(226,75,74,.06),rgba(226,75,74,.06) 4px,transparent 4px,transparent 10px);border-radius:var(--radius);padding:6px;min-height:54px;display:flex;flex-direction:column;justify-content:center}
+.blocked-label{font-size:10px;color:var(--red);font-weight:600}
+.blocked-sub{font-size:9px;color:var(--text3);margin-top:2px}
+.list-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer;transition:background .1s}
+.list-row:hover{background:var(--bg2)}
+.lr-info{flex:1;min-width:0}
+.lr-name{font-weight:500;font-size:13px}
+.lr-sub{font-size:11px;color:var(--text2);margin-top:2px}
+.badge{font-size:10px;padding:2px 9px;border-radius:20px;font-weight:500;flex-shrink:0;white-space:nowrap}
+.badge-green{background:var(--green-bg);color:var(--green-dark)}
+.badge-yellow{background:var(--yellow-bg);color:var(--yellow-dark)}
+.badge-red{background:var(--red-bg);color:var(--red-dark)}
+.badge-blue{background:var(--blue-bg);color:var(--blue-dark)}
+.badge-gray{background:var(--bg3);color:var(--text2)}
+.role-gestore{background:#e1f5ee;color:#085041}
+.role-utente{background:#eeedfe;color:#26215C}
+.veh-tag{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:500;background:var(--bg2);color:var(--text2);border:0.5px solid var(--border2);flex-shrink:0}
+.veh-card{border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.veh-card-info{flex:1}
+.veh-card-name{font-weight:600;font-size:14px}
+.veh-card-sub{font-size:11px;color:var(--text2);margin-top:2px}
+.conflict-box{background:var(--red-bg);border:0.5px solid rgba(226,75,74,.4);border-radius:var(--radius);padding:10px 12px;margin:8px 0;font-size:12px;color:var(--red-dark);line-height:1.5}
+.ok-box{background:var(--green-bg);border:0.5px solid rgba(29,158,117,.3);border-radius:var(--radius);padding:8px 12px;margin:8px 0;font-size:12px;color:var(--green-dark)}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:7px 10px;font-size:13px;background:var(--bg2);color:var(--text);outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue)}
+.field textarea{resize:vertical;min-height:48px}
+.frow{display:flex;gap:8px}.frow .field{flex:1}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
+.modal{background:var(--bg);border-radius:var(--radius-lg);border:0.5px solid var(--border2);width:380px;max-width:100%;padding:20px;max-height:90dvh;overflow-y:auto}
+.modal h2{font-size:15px;font-weight:600;margin-bottom:12px}
+.modal-sub{font-size:12px;color:var(--text2);background:var(--bg2);border-radius:var(--radius);padding:5px 10px;margin-bottom:14px;line-height:1.5}
+.btn-row{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap}
+.btn{border:0.5px solid var(--border2);background:transparent;border-radius:var(--radius);padding:7px 16px;cursor:pointer;font-size:13px;color:var(--text);transition:background .1s}
+.btn:hover{background:var(--bg2)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:500}
+.btn.primary:hover{opacity:.9}
+.btn.primary:disabled{opacity:.4;cursor:not-allowed}
+.btn.danger{color:var(--red);border-color:var(--red)}
+.btn.danger:hover{background:var(--red-bg)}
+.empty{text-align:center;padding:40px 20px;color:var(--text3)}
+.empty-icon{font-size:36px;margin-bottom:8px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 18px;border-radius:var(--radius);font-size:13px;z-index:9999;pointer-events:none;transition:opacity .2s}
+.spinner{width:18px;height:18px;border:2px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <h2>🚗 Prenota un Mezzo</h2>
+    <p>Accedi con le tue credenziali aziendali</p>
+    <div class="field"><label>Email</label>
+      <input id="ls-email" type="email" placeholder="nome@azienda.it" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="field"><label>Password</label>
+      <input id="ls-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="ls-err" style="color:var(--red);font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
+    <button class="btn primary" style="width:100%;padding:10px" onclick="doLogin()">Accedi</button>
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">Contatta il responsabile per le credenziali</div>
+  </div>
+</div>
+
+<div class="app" id="main-app" style="display:none">
+  <div class="topbar">
+    <div style="display:flex;align-items:center">
+      <div class="topbar-title">🚗 Prenota un Mezzo</div>
+      <div class="week-nav" id="week-nav">
+        <button onclick="prevWeek()">&#8249;</button>
+        <span id="week-label">...</span>
+        <button onclick="nextWeek()">&#8250;</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn primary" id="btn-new" style="padding:5px 14px;font-size:12px;display:none" onclick="openBookingModal(null,null)">+ Prenota</button>
+      <button class="user-btn" onclick="showProfile()">
+        <div class="avatar" id="user-avatar">?</div>
+        <span id="user-label">...</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="sb-icon active" title="Calendario" onclick="switchView('cal')">&#128197;</div>
+      <div class="sb-icon" title="Prenotazioni" onclick="switchView('list')">&#128203;</div>
+      <div class="sb-icon" title="Mezzi" onclick="switchView('vehicles')">&#128667;</div>
+      <div class="sb-icon" id="sb-admin" title="Gestione" onclick="switchView('admin')" style="display:none">&#9881;&#65039;</div>
+    </div>
+
+    <div id="view-cal" class="panel">
+      <div class="section-head">
+        <div class="tab-bar" style="margin:0">
+          <div class="tab active" id="tab-all" onclick="setFilter('all')">Tutte le prenotazioni</div>
+          <div class="tab" id="tab-mine" onclick="setFilter('mine')">Le mie</div>
+        </div>
+        <button class="btn primary" id="btn-new-cal" style="padding:5px 14px;font-size:12px;display:none" onclick="openBookingModal(null,null)">+ Prenota</button>
+      </div>
+      <div class="cal-wrap"><table class="cal-tbl" id="cal-tbl"></table></div>
+    </div>
+
+    <div id="view-list" class="panel" style="display:none">
+      <div class="section-head">
+        <span class="section-title">Prenotazioni attive</span>
+        <select id="list-filter-veh" style="border:0.5px solid var(--border2);border-radius:var(--radius);padding:5px 8px;font-size:12px;background:var(--bg2);color:var(--text)" onchange="renderList()">
+          <option value="">Tutti i mezzi</option>
+        </select>
+      </div>
+      <div id="list-body"></div>
+    </div>
+
+    <div id="view-vehicles" class="panel" style="display:none">
+      <div class="section-head"><span class="section-title">Disponibilita mezzi oggi</span></div>
+      <div id="vehicles-body"></div>
+    </div>
+
+    <div id="view-admin" class="panel" style="display:none">
+      <div class="tab-bar">
+        <div class="tab active" id="atab-people" onclick="switchAdminTab('people')">Persone autorizzate</div>
+        <div class="tab" id="atab-all" onclick="switchAdminTab('all')">Tutte le prenotazioni</div>
+      </div>
+      <div id="admin-body"></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-area"></div>
+
+<script>
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUser = null;
+let currentRole = null;
+let vehicles     = [];
+let bookingRoles = [];
+let bookings     = [];
+let vehicleStops = [];
+let weekOffset   = 0;
+let calFilter    = 'all';
+let currentView  = 'cal';
+let adminTab     = 'people';
+
+const DAYS      = ['Lun','Mar','Mer','Gio','Ven','Sab'];
+const SLOT_LABEL = { morning:'Mattina (6-13)', afternoon:'Pomeriggio (13-22)', full:'Giornata intera' };
+const SLOT_SHORT = { morning:'MAT', afternoon:'POM', full:'GIO' };
+
+const PALETTE = [
+  {bg:'#e6f1fb',text:'#0C447C',border:'#378ADD'},
+  {bg:'#E1F5EE',text:'#085041',border:'#1D9E75'},
+  {bg:'#FAECE7',text:'#4A1B0C',border:'#D85A30'},
+  {bg:'#FAEEDA',text:'#412402',border:'#BA7517'},
+  {bg:'#EEEDFE',text:'#26215C',border:'#7F77DD'},
+  {bg:'#fbeaf0',text:'#4B1528',border:'#D4537E'},
+  {bg:'#e8f5e1',text:'#1B3A0A',border:'#5A9E30'},
+];
+
+function colorForEmail(email) {
+  const idx = bookingRoles.findIndex(r => r.email === email);
+  return PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
+}
+
+function isGestore() { return currentRole === 'gestore'; }
+function canBook()   { return currentRole === 'gestore' || currentRole === 'utente'; }
+function myProfile() { return bookingRoles.find(r => r.email === currentUser?.email); }
+
+async function doLogin() {
+  const email = document.getElementById('ls-email').value.trim();
+  const pass  = document.getElementById('ls-pass').value;
+  const err   = document.getElementById('ls-err');
+  err.textContent = '';
+  if (!email || !pass) { err.textContent = 'Inserisci email e password'; return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) { err.textContent = 'Email o password errati'; return; }
+  await onLogin(data.user);
+}
+
+async function onLogin(user) {
+  currentUser = user;
+  const { data: rd } = await sb.from('booking_roles').select('*').eq('email', user.email).single();
+  if (!rd || !rd.active) {
+    document.getElementById('ls-err').textContent = 'Account non abilitato. Contatta il responsabile.';
+    await sb.auth.signOut(); return;
+  }
+  currentRole = rd.role;
+  const initials = rd.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-label').textContent = rd.name;
+  if (canBook()) {
+    document.getElementById('btn-new').style.display = 'flex';
+    document.getElementById('btn-new-cal').style.display = 'flex';
+  }
+  if (isGestore()) document.getElementById('sb-admin').style.display = 'flex';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'flex';
+  await loadAll();
+  requestAnimationFrame(() => requestAnimationFrame(() => renderCal()));
+  setInterval(async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) location.reload();
+  }, 10*60*1000);
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState==='visible') { await loadBookings(); if(currentView==='cal') renderCal(); }
+  });
+}
+
+function weekRange() {
+  const dates = getWeekDates();
+  return { from: fmt(dates[0]), to: fmt(dates[5]) };
+}
+
+async function loadAll() {
+  const { from, to } = weekRange();
+  const [{ data: v },{ data: br },{ data: bk },{ data: vs }] = await Promise.all([
+    sb.from('vehicles').select('*').eq('active',true).eq('bookable',true).order('name'),
+    sb.from('booking_roles').select('*').eq('active',true).order('name'),
+    sb.from('vehicle_bookings').select('*').gte('date',from).lte('date',to).neq('status','cancelled'),
+    sb.from('vehicle_stops').select('*'),
+  ]);
+  vehicles     = v  || [];
+  bookingRoles = br || [];
+  bookings     = bk || [];
+  vehicleStops = vs || [];
+  const sel = document.getElementById('list-filter-veh');
+  if (sel) sel.innerHTML = '<option value="">Tutti i mezzi</option>' +
+    vehicles.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+}
+
+async function loadBookings() {
+  const { from, to } = weekRange();
+  const { data } = await sb.from('vehicle_bookings').select('*').gte('date',from).lte('date',to).neq('status','cancelled');
+  bookings = data || [];
+}
+
+function getWeekDates() {
+  const now = new Date();
+  now.setDate(now.getDate() - now.getDay() + 1 + weekOffset * 7);
+  return Array.from({length:6}, (_,i) => { const d=new Date(now); d.setDate(now.getDate()+i); return d; });
+}
+function fmt(d)     { return d.toISOString().split('T')[0]; }
+function fmtDisp(d) { return d.getDate()+'/'+(d.getMonth()+1); }
+function isoDisp(s) { const [y,m,g]=s.split('-'); return g+'/'+m+'/'+y; }
+function isToday(d) { return d.toDateString()===new Date().toDateString(); }
+
+async function prevWeek() { weekOffset--; await loadBookings(); renderCal(); }
+async function nextWeek() { weekOffset++; await loadBookings(); renderCal(); }
+
+function switchView(v) {
+  currentView = v;
+  ['cal','list','vehicles','admin'].forEach(x => {
+    const el = document.getElementById('view-'+x);
+    if (el) el.style.display = x===v ? 'block' : 'none';
+  });
+  document.querySelectorAll('.sb-icon').forEach((el,i) => {
+    el.classList.toggle('active', ['cal','list','vehicles','admin'][i]===v);
+  });
+  document.getElementById('week-nav').style.display = v==='cal' ? 'flex' : 'none';
+  if (v==='list')     renderList();
+  if (v==='vehicles') renderVehicles();
+  if (v==='admin')    renderAdmin();
+}
+
+function setFilter(f) {
+  calFilter = f;
+  document.getElementById('tab-all').classList.toggle('active', f==='all');
+  document.getElementById('tab-mine').classList.toggle('active', f==='mine');
+  renderCal();
+}
+
+function renderCal() {
+  const dates = getWeekDates();
+  document.getElementById('week-label').textContent =
+    fmtDisp(dates[0]) + ' - ' + fmtDisp(dates[5]) + ' ' + dates[0].getFullYear();
+  let html = '<thead><tr><th>Mezzo</th>';
+  dates.forEach((d,i) => {
+    html += '<th class="'+(isToday(d)?'today-col':'')+'">' + DAYS[i] +
+      '<br><span style="font-size:14px;font-weight:'+(isToday(d)?700:400)+';color:var(--text)">' + d.getDate() + '</span></th>';
+  });
+  html += '</tr></thead><tbody>';
+  vehicles.forEach(v => {
+    html += '<tr><td><div class="veh-label">'+v.name+'</div><div class="veh-plate">'+v.plate+'</div></td>';
+    dates.forEach(d => {
+      const dateStr = fmt(d);
+      const stop = vehicleStops.find(s => s.vehicle_id===v.id && s.start_date<=dateStr && s.end_date>=dateStr);
+      if (stop) {
+        html += '<td><div class="blocked-cell"><div class="blocked-label">&#128296; '+stop.reason+'</div>' +
+          '<div class="blocked-sub">'+isoDisp(stop.start_date)+' - '+isoDisp(stop.end_date)+'</div></div></td>';
+        return;
+      }
+      let dayBk = bookings.filter(b => b.vehicle_id===v.id && b.date===dateStr);
+      if (calFilter==='mine') {
+        const me = myProfile();
+        if (me) dayBk = dayBk.filter(b => b.booker_email===me.email);
+      }
+      html += '<td><div class="cell-inner">';
+      if (dayBk.length > 0) {
+        dayBk.forEach(bk => {
+          const c = colorForEmail(bk.booker_email);
+          html += '<div class="bk-block" style="background:'+c.bg+';color:'+c.text+';border-left-color:'+c.border+'" onclick="showBookingDetail('+bk.id+')">' +
+            '<div class="bk-slot">'+SLOT_SHORT[bk.time_slot]+'</div>' +
+            '<div class="bk-name">'+(bk.booker_name||'?')+'</div>' +
+            '<div class="bk-dest">'+(bk.destination||'&mdash;')+'</div>' +
+            '</div>';
+        });
+        if (canBook() && hasAvailableSlot(v.id, dateStr, dayBk)) {
+          html += '<div class="add-btn-small" onclick="openBookingModal('+v.id+',\''+dateStr+'\')">&#65291;</div>';
+        }
+      } else if (canBook()) {
+        html += '<div class="add-btn-cell" onclick="openBookingModal('+v.id+',\''+dateStr+'\')">&#65291;</div>';
+      }
+      html += '</div></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('cal-tbl').innerHTML = html;
+}
+
+function hasAvailableSlot(vehicleId, dateStr, existing) {
+  const hasFull = existing.some(b=>b.time_slot==='full');
+  const hasMorn = existing.some(b=>b.time_slot==='morning');
+  const hasAftn = existing.some(b=>b.time_slot==='afternoon');
+  return !hasFull && !(hasMorn && hasAftn);
+}
+
+async function renderList() {
+  const body = document.getElementById('list-body');
+  body.innerHTML = '<div style="padding:20px;text-align:center"><div class="spinner"></div></div>';
+  const vehFilter = document.getElementById('list-filter-veh')?.value;
+  let query = sb.from('vehicle_bookings').select('*').neq('status','cancelled').order('date',{ascending:true}).limit(100);
+  if (vehFilter) query = query.eq('vehicle_id', +vehFilter);
+  const { data } = await query;
+  const all = data || [];
+  if (!all.length) { body.innerHTML = '<div class="empty"><div class="empty-icon">&#128203;</div><p>Nessuna prenotazione.</p></div>'; return; }
+  body.innerHTML = all.map(bk => {
+    const veh = vehicles.find(v=>v.id===bk.vehicle_id);
+    const c = colorForEmail(bk.booker_email);
+    const canCancel = isGestore() || bk.booker_email===currentUser?.email;
+    return '<div class="list-row">' +
+      '<div class="avatar" style="background:'+c.bg+';color:'+c.text+'">'+(bk.booker_name||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase()+'</div>' +
+      '<div class="lr-info">' +
+        '<div class="lr-name">'+(bk.booker_name||'?')+' &middot; '+isoDisp(bk.date)+'</div>' +
+        '<div class="lr-sub">'+SLOT_LABEL[bk.time_slot]+' &middot; '+(bk.destination||'&mdash;')+(bk.notes?' &middot; '+bk.notes:'')+'</div>' +
+      '</div>' +
+      '<div class="veh-tag">&#128667; '+(veh?.name||'?')+'</div>' +
+      (canCancel ? '<button class="btn danger" style="padding:4px 10px;font-size:11px" onclick="cancelBooking('+bk.id+')">Annulla</button>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function renderVehicles() {
+  const today = fmt(new Date());
+  document.getElementById('vehicles-body').innerHTML = vehicles.map(v => {
+    const stop = vehicleStops.find(s=>s.vehicle_id===v.id&&s.start_date<=today&&s.end_date>=today);
+    const todayBk = bookings.filter(b=>b.vehicle_id===v.id&&b.date===today);
+    let badge, badgeCls;
+    if (stop) { badge='&#128296; '+stop.reason; badgeCls='badge-red'; }
+    else if (todayBk.some(b=>b.time_slot==='full')||(todayBk.some(b=>b.time_slot==='morning')&&todayBk.some(b=>b.time_slot==='afternoon'))) { badge='Oggi occupato'; badgeCls='badge-red'; }
+    else if (todayBk.length>0) { badge=(todayBk[0].time_slot==='morning'?'Mattina':'Pomeriggio')+' occupato'; badgeCls='badge-yellow'; }
+    else { badge='Disponibile'; badgeCls='badge-green'; }
+    return '<div class="veh-card">' +
+      '<div style="font-size:26px">&#128667;</div>' +
+      '<div class="veh-card-info">' +
+        '<div class="veh-card-name">'+v.name+' <span style="font-size:11px;font-weight:400;color:var(--text2)">'+v.plate+'</span></div>' +
+        '<div class="veh-card-sub">'+v.type+(v.brand?' &middot; '+v.brand:'')+(v.model?' '+v.model:'')+(v.km?' &middot; '+v.km.toLocaleString()+' km':'')+'</div>' +
+      '</div>' +
+      '<div class="badge '+badgeCls+'">'+badge+'</div>' +
+      (canBook() ? '<button class="btn primary" style="padding:5px 12px;font-size:11px" onclick="openBookingModal('+v.id+',null)">Prenota</button>' : '') +
+      '</div>';
+  }).join('') || '<div class="empty"><div class="empty-icon">&#128667;</div><p>Nessun mezzo.</p></div>';
+}
+
+function switchAdminTab(tab) {
+  adminTab = tab;
+  document.getElementById('atab-people').classList.toggle('active', tab==='people');
+  document.getElementById('atab-all').classList.toggle('active', tab==='all');
+  renderAdmin();
+}
+
+async function renderAdmin() {
+  const body = document.getElementById('admin-body');
+  body.innerHTML = '<div style="padding:20px;text-align:center"><div class="spinner"></div></div>';
+  if (adminTab==='people') {
+    const { data } = await sb.from('booking_roles').select('*').order('name');
+    const all = data || [];
+    body.innerHTML =
+      '<div class="section-head" style="margin-bottom:10px">' +
+        '<span class="section-title">Persone autorizzate</span>' +
+        '<button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="openPersonModal(null)">+ Aggiungi</button>' +
+      '</div>' +
+      (all.map(p =>
+        '<div class="list-row">' +
+          '<div class="avatar" style="'+(p.active?'':'opacity:.4')+'">'+p.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase()+'</div>' +
+          '<div class="lr-info"><div class="lr-name">'+p.name+'</div><div class="lr-sub">'+p.email+(p.department?' &middot; '+p.department:'')+'</div></div>' +
+          '<div class="badge '+(p.role==='gestore'?'role-gestore':'role-utente')+'">'+(p.role==='gestore'?'Gestore':'Utente')+'</div>' +
+          '<div class="badge '+(p.active?'badge-green':'badge-gray')+'">'+(p.active?'Attivo':'Disabilitato')+'</div>' +
+          '<button class="btn" style="padding:4px 10px;font-size:11px" onclick="openPersonModal('+p.id+')">&#9998;</button>' +
+          '<button class="btn" style="padding:4px 10px;font-size:11px;color:'+(p.active?'var(--red)':'var(--green)')+'" onclick="togglePerson('+p.id+','+p.active+')">'+(p.active?'&#128683;':'&#9989;')+'</button>' +
+        '</div>'
+      ).join('') || '<div class="empty"><div class="empty-icon">&#128101;</div><p>Nessuna persona.</p></div>');
+  } else {
+    const { data } = await sb.from('vehicle_bookings').select('*').neq('status','cancelled').order('date',{ascending:true}).limit(200);
+    const all = data || [];
+    body.innerHTML = '<div class="section-head"><span class="section-title">Tutte le prenotazioni</span></div>' +
+      (all.length ? all.map(bk => {
+        const veh = vehicles.find(v=>v.id===bk.vehicle_id);
+        return '<div class="list-row">' +
+          '<div class="lr-info">' +
+            '<div class="lr-name">'+(bk.booker_name||'?')+' &middot; '+isoDisp(bk.date)+' &middot; '+SLOT_LABEL[bk.time_slot]+'</div>' +
+            '<div class="lr-sub">&#128667; '+(veh?.name||'?')+' &middot; '+(bk.destination||'&mdash;')+(bk.notes?' &middot; '+bk.notes:'')+'</div>' +
+          '</div>' +
+          '<button class="btn danger" style="padding:4px 10px;font-size:11px" onclick="cancelBooking('+bk.id+')">Annulla</button>' +
+          '</div>';
+      }).join('') : '<div class="empty"><div class="empty-icon">&#128203;</div><p>Nessuna prenotazione.</p></div>');
+  }
+}
+
+function openBookingModal(preVehicleId, preDate) {
+  if (!canBook()) { toast('Non sei abilitato a prenotare'); return; }
+  const vehOpts = vehicles.map(v =>
+    '<option value="'+v.id+'" '+(preVehicleId===v.id?'selected':'')+'>'+v.name+' &middot; '+v.plate+'</option>').join('');
+  const me = myProfile();
+  const forOpts = isGestore()
+    ? bookingRoles.map(r => '<option value="'+r.email+'" '+(r.email===currentUser.email?'selected':'')+'>'+r.name+(r.department?' ('+r.department+')':'')+'</option>').join('')
+    : '<option value="'+(me?.email||'')+'">'+( me?.name||'?')+'</option>';
+  const today = fmt(new Date());
+  showModal('<h2>&#128663; Nuova prenotazione</h2>' +
+    '<div class="field"><label>Mezzo</label>' +
+      '<select id="bk-veh" onchange="checkConflict()">'+vehOpts+'</select>' +
+    '</div>' +
+    (isGestore() ? '<div class="field"><label>Per conto di</label><select id="bk-for">'+forOpts+'</select></div>' : '') +
+    '<div class="frow">' +
+      '<div class="field"><label>Data</label>' +
+        '<input id="bk-date" type="date" value="'+(preDate||today)+'" onchange="checkConflict()">' +
+      '</div>' +
+      '<div class="field"><label>Fascia</label>' +
+        '<select id="bk-slot" onchange="checkConflict()">' +
+          '<option value="morning">Mattina (6-13)</option>' +
+          '<option value="afternoon">Pomeriggio (13-22)</option>' +
+          '<option value="full" selected>Giornata intera</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div id="conflict-area"></div>' +
+    '<div class="field"><label>Destinazione</label>' +
+      '<input id="bk-dest" placeholder="es. Milano, Fiera, Cliente Rossi...">' +
+    '</div>' +
+    '<div class="field"><label>Note</label>' +
+      '<textarea id="bk-notes"></textarea>' +
+    '</div>' +
+    '<div class="btn-row">' +
+      '<button class="btn" onclick="closeModal()">Annulla</button>' +
+      '<button class="btn primary" id="bk-btn" onclick="saveBooking()">Prenota</button>' +
+    '</div>');
+  if (preVehicleId && preDate) checkConflict();
+}
+
+async function checkConflict() {
+  const vehId = +document.getElementById('bk-veh').value;
+  const date  = document.getElementById('bk-date').value;
+  const slot  = document.getElementById('bk-slot').value;
+  const area  = document.getElementById('conflict-area');
+  const btn   = document.getElementById('bk-btn');
+  if (!vehId || !date) return;
+  const stop = vehicleStops.find(s=>s.vehicle_id===vehId&&s.start_date<=date&&s.end_date>=date);
+  if (stop) {
+    area.innerHTML = '<div class="conflict-box">&#9888;&#65039; <strong>Mezzo non disponibile</strong><br>In fermo: '+stop.reason+' ('+isoDisp(stop.start_date)+' - '+isoDisp(stop.end_date)+')</div>';
+    btn.disabled = true; return;
+  }
+  const { data } = await sb.from('vehicle_bookings').select('*').eq('vehicle_id',vehId).eq('date',date).neq('status','cancelled');
+  const existing = data||[];
+  const conflicts = existing.filter(b => {
+    if (slot==='full') return true;
+    if (b.time_slot==='full') return true;
+    return b.time_slot===slot;
+  });
+  if (conflicts.length>0) {
+    const names = conflicts.map(b=>(b.booker_name||'?')+' ('+SLOT_LABEL[b.time_slot]+')').join(', ');
+    area.innerHTML = '<div class="conflict-box">&#9888;&#65039; <strong>Gia prenotato da:</strong> '+names+'</div>';
+    btn.disabled = true;
+  } else {
+    area.innerHTML = '<div class="ok-box">&#9989; Mezzo disponibile per questa fascia</div>';
+    btn.disabled = false;
+  }
+}
+
+async function saveBooking() {
+  const vehId    = +document.getElementById('bk-veh').value;
+  const date     = document.getElementById('bk-date').value;
+  const slot     = document.getElementById('bk-slot').value;
+  const dest     = document.getElementById('bk-dest').value.trim();
+  const notes    = document.getElementById('bk-notes').value.trim();
+  const me       = myProfile();
+  const forEmail = isGestore() ? document.getElementById('bk-for').value : me?.email;
+  const forPerson = bookingRoles.find(r=>r.email===forEmail);
+  if (!dest) { toast('Inserisci la destinazione'); return; }
+  const veh = vehicles.find(v=>v.id===vehId);
+  const { error } = await sb.from('vehicle_bookings').insert({
+    vehicle_id: vehId, booker_email: forEmail,
+    booker_name: forPerson?.name||forEmail,
+    date, time_slot: slot, destination: dest, notes,
+    status: 'confirmed', created_by: me?.name||currentUser.email
+  });
+  if (error) { toast('Errore: '+error.message); return; }
+  await loadBookings();
+  closeModal();
+  if (currentView==='cal') renderCal();
+  if (currentView==='list') renderList();
+  toast('Prenotato ' + (veh?.name||'') + ' per ' + (forPerson?.name||forEmail));
+}
+
+async function showBookingDetail(id) {
+  const { data: bk } = await sb.from('vehicle_bookings').select('*, vehicles(name,plate)').eq('id',id).single();
+  if (!bk) return;
+  const canCancel = isGestore() || bk.booker_email===currentUser?.email;
+  showModal('<h2>Dettaglio prenotazione</h2>' +
+    '<div class="modal-sub">&#128667; '+(bk.vehicles?.name||'?')+' &middot; '+(bk.vehicles?.plate||'')+'<br>&#128197; '+isoDisp(bk.date)+' &middot; '+SLOT_LABEL[bk.time_slot]+'</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">' +
+      '<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Prenotato da</div>' +
+        '<div style="font-weight:500">'+(bk.booker_name||'?')+'</div></div>' +
+      '<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Destinazione</div>' +
+        '<div style="font-weight:500">'+(bk.destination||'&mdash;')+'</div></div>' +
+    '</div>' +
+    (bk.notes ? '<div class="field"><label>Note</label><div style="padding:4px 0;font-size:12px">'+bk.notes+'</div></div>' : '') +
+    '<div style="font-size:11px;color:var(--text3)">Inserita da '+bk.created_by+'</div>' +
+    '<div class="btn-row">' +
+      (canCancel ? '<button class="btn danger" onclick="cancelBooking('+id+')">Annulla prenotazione</button>' : '') +
+      '<button class="btn" onclick="closeModal()">Chiudi</button>' +
+    '</div>');
+}
+
+async function cancelBooking(id) {
+  const { error } = await sb.from('vehicle_bookings').update({status:'cancelled'}).eq('id',id);
+  if (error) { toast('Errore'); return; }
+  await loadBookings();
+  closeModal();
+  if (currentView==='cal')   renderCal();
+  if (currentView==='list')  renderList();
+  if (currentView==='admin') renderAdmin();
+  toast('Prenotazione annullata');
+}
+
+function openPersonModal(id) {
+  const p = id ? bookingRoles.find(r=>r.id===id)||null : null;
+  showModal('<h2>'+(p?'Modifica persona':'Nuova persona')+'</h2>' +
+    '<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">' +
+      '&#9888;&#65039; Crea prima l\'utente su <strong>Supabase &rarr; Authentication &rarr; Add user</strong>, poi aggiungilo qui con la stessa email.' +
+    '</div>' +
+    '<div class="field"><label>Nome completo</label>' +
+      '<input id="pm-name" value="'+(p?.name||'')+'" placeholder="es. Mario Rossi">' +
+    '</div>' +
+    '<div class="frow">' +
+      '<div class="field"><label>Email</label>' +
+        '<input id="pm-email" type="email" value="'+(p?.email||'')+'" placeholder="mario@azienda.it" '+(p?'readonly style="opacity:.6"':'')+'>'+
+      '</div>' +
+      '<div class="field"><label>Reparto</label>' +
+        '<input id="pm-dept" value="'+(p?.department||'')+'" placeholder="es. Ufficio">' +
+      '</div>' +
+    '</div>' +
+    '<div class="field"><label>Ruolo</label>' +
+      '<select id="pm-role">' +
+        '<option value="utente" '+(p?.role==='utente'||!p?'selected':'')+'>Utente - prenota per se stesso</option>' +
+        '<option value="gestore" '+(p?.role==='gestore'?'selected':'')+'>Gestore - gestisce tutto</option>' +
+      '</select>' +
+    '</div>' +
+    '<div class="btn-row">' +
+      '<button class="btn" onclick="closeModal()">Annulla</button>' +
+      '<button class="btn primary" onclick="savePerson('+(id||'null')+')">Salva</button>' +
+    '</div>');
+}
+
+async function savePerson(id) {
+  const name  = document.getElementById('pm-name').value.trim();
+  const p     = id ? bookingRoles.find(r=>r.id===id) : null;
+  const email = p ? p.email : document.getElementById('pm-email').value.trim().toLowerCase();
+  const dept  = document.getElementById('pm-dept').value.trim();
+  const role  = document.getElementById('pm-role').value;
+  if (!name)  { toast('Inserisci il nome'); return; }
+  if (!email) { toast('Inserisci la email'); return; }
+  let error;
+  if (id) {
+    ({ error } = await sb.from('booking_roles').update({name,department:dept,role}).eq('id',id));
+  } else {
+    ({ error } = await sb.from('booking_roles').insert({name,email,department:dept,role,active:true}));
+  }
+  if (error) { toast('Errore: '+error.message); return; }
+  toast(id ? 'Persona aggiornata' : 'Persona aggiunta');
+  closeModal();
+  const { data } = await sb.from('booking_roles').select('*').eq('active',true).order('name');
+  bookingRoles = data||[];
+  renderAdmin();
+}
+
+async function togglePerson(id, current) {
+  await sb.from('booking_roles').update({active:!current}).eq('id',id);
+  toast(current ? 'Persona disabilitata' : 'Persona riabilitata');
+  const { data } = await sb.from('booking_roles').select('*').order('name');
+  bookingRoles = (data||[]).filter(r=>r.active);
+  renderAdmin();
+}
+
+function showProfile() {
+  const me = myProfile();
+  const initials = (me?.name||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+  showModal('<h2>Il mio profilo</h2>' +
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">' +
+      '<div class="avatar" style="width:40px;height:40px;font-size:14px">'+initials+'</div>' +
+      '<div><div style="font-weight:500;font-size:14px">'+(me?.name||'?')+'</div>' +
+        '<div style="font-size:12px;color:var(--text2)">'+(currentUser?.email||'')+'</div>' +
+        (me?.department ? '<div style="font-size:11px;color:var(--text3)">'+me.department+'</div>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="badge '+(currentRole==='gestore'?'role-gestore':'role-utente')+'" style="margin-bottom:16px;display:inline-block">' +
+      (currentRole==='gestore' ? 'Gestore' : 'Utente') +
+    '</div>' +
+    '<div class="btn-row">' +
+      '<button class="btn" onclick="closeModal()">Chiudi</button>' +
+      '<button class="btn danger" onclick="doLogout()">Esci</button>' +
+    '</div>');
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  closeModal();
+  setTimeout(() => location.reload(), 200);
+}
+
+function showModal(html) {
+  document.getElementById('modal-area').innerHTML =
+    '<div class="modal-bg" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()">'+html+'</div></div>';
+}
+function closeModal() { document.getElementById('modal-area').innerHTML=''; }
+function toast(msg) {
+  const t=document.createElement('div');
+  t.className='toast'; t.textContent=msg; t.style.opacity='0';
+  document.body.appendChild(t);
+  requestAnimationFrame(()=>{ t.style.opacity='1';
+    setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),200); },2600); });
+}
+
+(async()=>{
+  const { data:{ session } } = await sb.auth.getSession();
+  if (session) await onLogin(session.user);
+})();
+</script>
+</body>
+</html>
