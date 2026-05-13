@@ -10,6 +10,7 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
 
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -1747,6 +1748,7 @@ function renderFleet(body) {
         <div class="veh-info">
           <div class="veh-name">${v.name} <span style="font-size:11px;color:var(--text2);font-weight:400">${v.plate}</span></div>
           <div class="veh-sub">${v.type}${v.brand?' · '+v.brand:''}${v.model?' '+v.model:''}${v.year?' ('+v.year+')':''}${v.km?' · '+v.km.toLocaleString()+' km':''}</div>
+          ${v.bookable ? `<div style="font-size:10px;margin-top:3px;color:var(--blue)">🚗 Prenotabile dai dipendenti</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;flex-shrink:0">
           <span style="color:var(--text3);font-size:11px">›</span>
@@ -1968,23 +1970,33 @@ function openVehicleModal(id) {
       <div class="field"><label>KM attuali</label><input id="fv-km" type="number" value="${v&&v.km?v.km:''}" placeholder="es. 125000"></div>
     </div>
     <div class="field"><label>Note</label><textarea id="fv-notes">${v&&v.notes?v.notes:''}</textarea></div>
+    <div style="border:0.5px solid var(--border2);border-radius:var(--radius);padding:10px 12px;background:var(--bg2);margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="fv-bookable" ${v&&v.bookable?'checked':''} style="width:16px;height:16px;cursor:pointer">
+        <div>
+          <div style="font-weight:500;font-size:13px">Prenotabile dai dipendenti</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Attiva per auto aziendali (Golf, Passat…). Lascia spento per camion e mezzi degli autisti.</div>
+        </div>
+      </label>
+    </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
       <button class="btn primary" onclick="saveVehicle(${id||'null'})">Salva</button>
     </div>`);
 }
 async function saveVehicle(id) {
-  const name  = document.getElementById('fv-name').value.trim();
-  const type  = document.getElementById('fv-type').value;
-  const plate = document.getElementById('fv-plate').value.trim().toUpperCase();
-  const brand = document.getElementById('fv-brand').value.trim();
-  const model = document.getElementById('fv-model').value.trim();
-  const year  = document.getElementById('fv-year').value ? +document.getElementById('fv-year').value : null;
-  const km    = document.getElementById('fv-km').value ? +document.getElementById('fv-km').value : null;
-  const notes = document.getElementById('fv-notes').value.trim();
-  if (!name) { toast('Inserisci il nome del veicolo'); return; }
+  const name     = document.getElementById('fv-name').value.trim();
+  const type     = document.getElementById('fv-type').value;
+  const plate    = document.getElementById('fv-plate').value.trim().toUpperCase();
+  const brand    = document.getElementById('fv-brand').value.trim();
+  const model    = document.getElementById('fv-model').value.trim();
+  const year     = document.getElementById('fv-year').value ? +document.getElementById('fv-year').value : null;
+  const km       = document.getElementById('fv-km').value ? +document.getElementById('fv-km').value : null;
+  const notes    = document.getElementById('fv-notes').value.trim();
+  const bookable = document.getElementById('fv-bookable').checked;
+  if (!name)  { toast('Inserisci il nome del veicolo'); return; }
   if (!plate) { toast('Inserisci la targa'); return; }
-  const payload = { name, type, plate, brand, model, year, km, notes };
+  const payload = { name, type, plate, brand, model, year, km, notes, bookable };
   if (id) {
     const { error } = await sb.from('vehicles').update(payload).eq('id', id);
     if (error) { toast('Errore modifica'); return; }
