@@ -10,7 +10,6 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
 
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -128,16 +127,51 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 <div class="login-screen" id="login-screen">
   <div class="login-card">
     <h2>🚗 Prenota un Mezzo</h2>
-    <p>Accedi con le tue credenziali aziendali</p>
-    <div class="field"><label>Email</label>
-      <input id="ls-email" type="email" placeholder="nome@azienda.it" onkeydown="if(event.key==='Enter')doLogin()">
+
+    <!-- TAB SWITCHER -->
+    <div style="display:flex;gap:0;margin-bottom:20px;border:0.5px solid var(--border2);border-radius:var(--radius);overflow:hidden">
+      <div id="lt-email-tab" onclick="switchLoginTab('email')"
+        style="flex:1;text-align:center;padding:8px;font-size:12px;cursor:pointer;background:var(--blue);color:#fff;font-weight:500">
+        📧 Email
+      </div>
+      <div id="lt-pin-tab" onclick="switchLoginTab('pin')"
+        style="flex:1;text-align:center;padding:8px;font-size:12px;cursor:pointer;background:transparent;color:var(--text2)">
+        🔢 PIN
+      </div>
     </div>
-    <div class="field"><label>Password</label>
-      <input id="ls-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+
+    <!-- EMAIL LOGIN -->
+    <div id="lt-email">
+      <div class="field"><label>Email</label>
+        <input id="ls-email" type="email" placeholder="nome@azienda.it" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="field"><label>Password</label>
+        <input id="ls-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div id="ls-err" style="color:var(--red);font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
+      <button class="btn primary" style="width:100%;padding:10px" onclick="doLogin()">Accedi</button>
     </div>
-    <div id="ls-err" style="color:var(--red);font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
-    <button class="btn primary" style="width:100%;padding:10px" onclick="doLogin()">Accedi</button>
-    <div style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">Contatta il responsabile per le credenziali</div>
+
+    <!-- PIN LOGIN -->
+    <div id="lt-pin" style="display:none">
+      <div class="field"><label>Il tuo nome</label>
+        <select id="ls-pin-name" style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:13px;background:var(--bg2);color:var(--text)">
+          <option value="">-- Seleziona il tuo nome --</option>
+        </select>
+      </div>
+      <div class="field"><label>PIN (5 cifre)</label>
+        <input id="ls-pin" type="password" inputmode="numeric" maxlength="5"
+          placeholder="• • • • •"
+          style="text-align:center;font-size:22px;letter-spacing:8px"
+          onkeydown="if(event.key==='Enter')doLoginPin()">
+      </div>
+      <div id="ls-pin-err" style="color:var(--red);font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
+      <button class="btn primary" style="width:100%;padding:10px" onclick="doLoginPin()">Accedi con PIN</button>
+    </div>
+
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">
+      Contatta il responsabile per le credenziali
+    </div>
   </div>
 </div>
 
@@ -242,7 +276,68 @@ function colorForEmail(email) {
 
 function isGestore() { return currentRole === 'gestore'; }
 function canBook()   { return currentRole === 'gestore' || currentRole === 'utente'; }
-function myProfile() { return bookingRoles.find(r => r.email === currentUser?.email); }
+function myProfile() {
+  if (currentUser?.isPinUser) {
+    const saved = sessionStorage.getItem('pin_user');
+    return saved ? JSON.parse(saved) : null;
+  }
+  return bookingRoles.find(r => r.email === currentUser?.email);
+}
+
+function switchLoginTab(tab) {
+  const isEmail = tab === 'email';
+  document.getElementById('lt-email').style.display     = isEmail ? 'block' : 'none';
+  document.getElementById('lt-pin').style.display       = isEmail ? 'none'  : 'block';
+  document.getElementById('lt-email-tab').style.background = isEmail ? 'var(--blue)' : 'transparent';
+  document.getElementById('lt-email-tab').style.color      = isEmail ? '#fff' : 'var(--text2)';
+  document.getElementById('lt-email-tab').style.fontWeight = isEmail ? '500' : '400';
+  document.getElementById('lt-pin-tab').style.background   = isEmail ? 'transparent' : 'var(--blue)';
+  document.getElementById('lt-pin-tab').style.color        = isEmail ? 'var(--text2)' : '#fff';
+  document.getElementById('lt-pin-tab').style.fontWeight   = isEmail ? '400' : '500';
+}
+
+async function loadPinNames() {
+  // Carica solo persone con PIN impostato (non hanno email Supabase)
+  const { data } = await sb.from('booking_roles').select('id,name,pin').eq('active',true).not('pin','is',null);
+  const sel = document.getElementById('ls-pin-name');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- Seleziona il tuo nome --</option>' +
+    (data||[]).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+async function doLoginPin() {
+  const personId = document.getElementById('ls-pin-name').value;
+  const pin      = document.getElementById('ls-pin').value.trim();
+  const err      = document.getElementById('ls-pin-err');
+  err.textContent = '';
+  if (!personId) { err.textContent = 'Seleziona il tuo nome'; return; }
+  if (!pin || pin.length !== 5) { err.textContent = 'Inserisci il PIN a 5 cifre'; return; }
+  // Verifica PIN lato client (booking_roles è public read)
+  const { data: person } = await sb.from('booking_roles').select('*').eq('id', +personId).eq('pin', pin).eq('active', true).single();
+  if (!person) { err.textContent = 'PIN errato'; return; }
+  // Login PIN: non usa Supabase Auth, gestisco sessione in localStorage
+  currentUser = { id: 'pin_'+person.id, email: null, isPinUser: true };
+  await onLoginPerson(person);
+}
+
+async function onLoginPerson(person) {
+  currentRole = person.role;
+  const initials = person.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-label').textContent  = person.name;
+  if (canBook()) {
+    document.getElementById('btn-new').style.display     = 'flex';
+    document.getElementById('btn-new-cal').style.display = 'flex';
+  }
+  if (isGestore()) document.getElementById('sb-admin').style.display = 'flex';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display     = 'flex';
+  // Salva sessione PIN in sessionStorage
+  sessionStorage.setItem('pin_user', JSON.stringify(person));
+  await loadAll();
+  requestAnimationFrame(() => requestAnimationFrame(() => renderCal()));
+  startAutoRefresh();
+}
 
 async function doLogin() {
   const email = document.getElementById('ls-email').value.trim();
@@ -262,23 +357,15 @@ async function onLogin(user) {
     document.getElementById('ls-err').textContent = 'Account non abilitato. Contatta il responsabile.';
     await sb.auth.signOut(); return;
   }
-  currentRole = rd.role;
-  const initials = rd.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
-  document.getElementById('user-avatar').textContent = initials;
-  document.getElementById('user-label').textContent = rd.name;
-  if (canBook()) {
-    document.getElementById('btn-new').style.display = 'flex';
-    document.getElementById('btn-new-cal').style.display = 'flex';
-  }
-  if (isGestore()) document.getElementById('sb-admin').style.display = 'flex';
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'flex';
-  await loadAll();
-  requestAnimationFrame(() => requestAnimationFrame(() => renderCal()));
+  await onLoginPerson(rd);
+}
+
+function startAutoRefresh() {
+  // Aggiorna prenotazioni ogni 60 secondi
   setInterval(async () => {
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) location.reload();
-  }, 10*60*1000);
+    await loadBookings();
+    if (currentView==='cal') renderCal();
+  }, 60000);
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState==='visible') { await loadBookings(); if(currentView==='cal') renderCal(); }
   });
@@ -624,24 +711,30 @@ function openPersonModal(id) {
   const p = id ? bookingRoles.find(r=>r.id===id)||null : null;
   showModal('<h2>'+(p?'Modifica persona':'Nuova persona')+'</h2>' +
     '<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">' +
-      '&#9888;&#65039; Crea prima l\'utente su <strong>Supabase &rarr; Authentication &rarr; Add user</strong>, poi aggiungilo qui con la stessa email.' +
+      '&#9888;&#65039; Per accesso con email: crea prima l\'utente su <strong>Supabase &rarr; Authentication</strong>.<br>' +
+      'Per accesso con PIN: lascia email vuota e imposta solo il PIN.' +
     '</div>' +
     '<div class="field"><label>Nome completo</label>' +
       '<input id="pm-name" value="'+(p?.name||'')+'" placeholder="es. Mario Rossi">' +
     '</div>' +
     '<div class="frow">' +
-      '<div class="field"><label>Email</label>' +
+      '<div class="field"><label>Email (per accesso con email)</label>' +
         '<input id="pm-email" type="email" value="'+(p?.email||'')+'" placeholder="mario@azienda.it" '+(p?'readonly style="opacity:.6"':'')+'>'+
       '</div>' +
       '<div class="field"><label>Reparto</label>' +
         '<input id="pm-dept" value="'+(p?.department||'')+'" placeholder="es. Ufficio">' +
       '</div>' +
     '</div>' +
-    '<div class="field"><label>Ruolo</label>' +
-      '<select id="pm-role">' +
-        '<option value="utente" '+(p?.role==='utente'||!p?'selected':'')+'>Utente - prenota per se stesso</option>' +
-        '<option value="gestore" '+(p?.role==='gestore'?'selected':'')+'>Gestore - gestisce tutto</option>' +
-      '</select>' +
+    '<div class="frow">' +
+      '<div class="field"><label>PIN a 5 cifre (per accesso senza email)</label>' +
+        '<input id="pm-pin" type="password" inputmode="numeric" maxlength="5" value="'+(p?.pin||'')+'" placeholder="es. 12345">' +
+      '</div>' +
+      '<div class="field"><label>Ruolo</label>' +
+        '<select id="pm-role">' +
+          '<option value="utente" '+(p?.role==='utente'||!p?'selected':'')+'>Utente</option>' +
+          '<option value="gestore" '+(p?.role==='gestore'?'selected':'')+'>Gestore</option>' +
+        '</select>' +
+      '</div>' +
     '</div>' +
     '<div class="btn-row">' +
       '<button class="btn" onclick="closeModal()">Annulla</button>' +
@@ -655,13 +748,18 @@ async function savePerson(id) {
   const email = p ? p.email : document.getElementById('pm-email').value.trim().toLowerCase();
   const dept  = document.getElementById('pm-dept').value.trim();
   const role  = document.getElementById('pm-role').value;
-  if (!name)  { toast('Inserisci il nome'); return; }
-  if (!email) { toast('Inserisci la email'); return; }
+  const pin   = document.getElementById('pm-pin').value.trim();
+  if (!name) { toast('Inserisci il nome'); return; }
+  if (pin && pin.length !== 5) { toast('Il PIN deve essere di 5 cifre'); return; }
+  if (!email && !pin) { toast('Inserisci almeno email o PIN'); return; }
+  const payload = { name, department:dept, role };
+  if (pin) payload.pin = pin;
+  if (!p && email) payload.email = email;
   let error;
   if (id) {
-    ({ error } = await sb.from('booking_roles').update({name,department:dept,role}).eq('id',id));
+    ({ error } = await sb.from('booking_roles').update(payload).eq('id',id));
   } else {
-    ({ error } = await sb.from('booking_roles').insert({name,email,department:dept,role,active:true}));
+    ({ error } = await sb.from('booking_roles').insert({...payload, email: email||null, active:true}));
   }
   if (error) { toast('Errore: '+error.message); return; }
   toast(id ? 'Persona aggiornata' : 'Persona aggiunta');
@@ -700,7 +798,8 @@ function showProfile() {
 }
 
 async function doLogout() {
-  await sb.auth.signOut();
+  sessionStorage.removeItem('pin_user');
+  if (!currentUser?.isPinUser) await sb.auth.signOut();
   closeModal();
   setTimeout(() => location.reload(), 200);
 }
@@ -719,8 +818,11 @@ function toast(msg) {
 }
 
 (async()=>{
+  const pinSaved = sessionStorage.getItem('pin_user');
+  if (pinSaved) { currentUser={isPinUser:true}; await onLoginPerson(JSON.parse(pinSaved)); return; }
   const { data:{ session } } = await sb.auth.getSession();
-  if (session) await onLogin(session.user);
+  if (session) { await onLogin(session.user); return; }
+  await loadPinNames();
 })();
 </script>
 </body>

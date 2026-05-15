@@ -10,7 +10,6 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
 
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -481,15 +480,20 @@ async function init() {
     if (!session && currentUser) { currentUser = null; showLoginScreen(); }
   }, 10 * 60 * 1000);
 
-  // Quando la tab torna in primo piano, ricontrolla la sessione
+  // Auto-refresh prenotazioni ogni 60 secondi
+  setInterval(async () => {
+    if (!currentUser) return;
+    await loadTrips();
+    if (document.getElementById('view-cal').style.display !== 'none') renderTrips();
+  }, 60000);
+
+  // Quando la tab torna in primo piano, ricarica subito
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible' && currentUser) {
       const { data: { session } } = await sb.auth.getSession();
       if (!session) { currentUser = null; showLoginScreen(); return; }
-      // Ricarica dati se la tab era nascosta da più di 5 minuti
-      if (!window._lastVisible || Date.now() - window._lastVisible > 5 * 60 * 1000) {
-        await loadTrips(); renderTrips();
-      }
+      await loadTrips();
+      if (document.getElementById('view-cal').style.display !== 'none') renderTrips();
     }
     if (document.visibilityState === 'hidden') window._lastVisible = Date.now();
   });
@@ -1610,7 +1614,10 @@ async function addDestModal() {
   if (!name||!name.trim()) return;
   const { error } = await sb.from('destinations').insert({ name: name.trim() });
   if (error) { toast('Errore o destinazione già presente'); return; }
-  dests.push(name.trim()); dests.sort(); renderDests(); toast('Destinazione aggiunta');
+  dests.push(name.trim()); dests.sort();
+  const dlEl = document.getElementById('dl-dests');
+  if (dlEl) dlEl.innerHTML = dests.map(d => `<option value="${d}">`).join('');
+  renderDests(); toast('Destinazione aggiunta');
 }
 async function editDest(oldName) {
   const newName = prompt('Modifica destinazione:', oldName);
