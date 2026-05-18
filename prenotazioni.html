@@ -250,6 +250,7 @@ let vehicles     = [];
 let bookingRoles = [];
 let bookings     = [];
 let vehicleStops = [];
+let vehicleDeadlines = [];
 let weekOffset   = 0;
 let calFilter    = 'all';
 let currentView  = 'cal';
@@ -381,8 +382,6 @@ function weekRange() {
 }
 
 async function loadAll() {
-let vehicleDeadlines = [];
-
   const { from, to } = weekRange();
   const [{ data: v },{ data: br },{ data: bk },{ data: vs },{ data: vd }] = await Promise.all([
     sb.from('vehicles').select('*').eq('active',true).eq('bookable',true).order('name'),
