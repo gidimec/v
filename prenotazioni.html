@@ -381,17 +381,21 @@ function weekRange() {
 }
 
 async function loadAll() {
+let vehicleDeadlines = [];
+
   const { from, to } = weekRange();
-  const [{ data: v },{ data: br },{ data: bk },{ data: vs }] = await Promise.all([
+  const [{ data: v },{ data: br },{ data: bk },{ data: vs },{ data: vd }] = await Promise.all([
     sb.from('vehicles').select('*').eq('active',true).eq('bookable',true).order('name'),
     sb.from('user_roles').select('*').eq('can_book',true).order('name'),
     sb.from('vehicle_bookings').select('*').gte('date',from).lte('date',to).neq('status','cancelled'),
     sb.from('vehicle_stops').select('*'),
+    sb.from('vehicle_deadlines').select('*').eq('completed',false),
   ]);
-  vehicles     = v  || [];
-  bookingRoles = br || [];
-  bookings     = bk || [];
-  vehicleStops = vs || [];
+  vehicles         = v  || [];
+  bookingRoles     = br || [];
+  bookings         = bk || [];
+  vehicleStops     = vs || [];
+  vehicleDeadlines = vd || [];
   const sel = document.getElementById('list-filter-veh');
   if (sel) sel.innerHTML = '<option value="">Tutti i mezzi</option>' +
     vehicles.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
@@ -411,6 +415,18 @@ function getWeekDates() {
 function fmt(d)     { return d.toISOString().split('T')[0]; }
 function fmtDisp(d) { return d.getDate()+'/'+(d.getMonth()+1); }
 function isoDisp(s) { const [y,m,g]=s.split('-'); return g+'/'+m+'/'+y; }
+function isVehicleBlocked(vehicleId, dateStr) {
+  // Controlla fermi
+  const stop = vehicleStops.find(s =>
+    s.vehicle_id === vehicleId && s.start_date <= dateStr && s.end_date >= dateStr);
+  if (stop) return { blocked: true, reason: stop.reason, from: stop.start_date, to: stop.end_date, type: 'fermo' };
+  // Controlla scadenze (revisioni, tagliandi ecc.) — il giorno esatto della scadenza il mezzo non è disponibile
+  const dl = vehicleDeadlines.find(d =>
+    d.vehicle_id === vehicleId && d.deadline_date === dateStr);
+  if (dl) return { blocked: true, reason: dl.type, from: dateStr, to: dateStr, type: 'scadenza' };
+  return null;
+}
+
 function isToday(d) { return d.toDateString()===new Date().toDateString(); }
 
 async function prevWeek() { weekOffset--; await loadBookings(); renderCal(); }
@@ -452,10 +468,13 @@ function renderCal() {
     html += '<tr><td><div class="veh-label">'+v.name+'</div><div class="veh-plate">'+v.plate+'</div></td>';
     dates.forEach(d => {
       const dateStr = fmt(d);
-      const stop = vehicleStops.find(s => s.vehicle_id===v.id && s.start_date<=dateStr && s.end_date>=dateStr);
-      if (stop) {
-        html += '<td><div class="blocked-cell"><div class="blocked-label">&#128296; '+stop.reason+'</div>' +
-          '<div class="blocked-sub">'+isoDisp(stop.start_date)+' - '+isoDisp(stop.end_date)+'</div></div></td>';
+      const block = isVehicleBlocked(v.id, dateStr);
+      if (block) {
+        const icon = block.type === 'scadenza' ? '📋' : '🔧';
+        html += `<td><div class="blocked-cell">
+          <div class="blocked-label">${icon} ${block.reason}</div>
+          <div class="blocked-sub">${isoDisp(block.from)}${block.from!==block.to?' → '+isoDisp(block.to):''}</div>
+        </div></td>`;
         return;
       }
       let dayBk = bookings.filter(b => b.vehicle_id===v.id && b.date===dateStr);
@@ -563,9 +582,10 @@ function openBookingModal(preVehicleId, preDate) {
   const vehOpts = vehicles.map(v =>
     '<option value="'+v.id+'" '+(preVehicleId===v.id?'selected':'')+'>'+v.name+' &middot; '+v.plate+'</option>').join('');
   const me = myProfile();
+  const myId = me?.id;
   const forOpts = isGestore()
-    ? bookingRoles.map(r => '<option value="'+r.email+'" '+(r.email===currentUser.email?'selected':'')+'>'+r.name+(r.department?' ('+r.department+')':'')+'</option>').join('')
-    : '<option value="'+(me?.email||'')+'">'+( me?.name||'?')+'</option>';
+    ? bookingRoles.map(r => `<option value="${r.id}" ${r.id===myId?'selected':''}>${r.name}${r.department?' ('+r.department+')':''}</option>`).join('')
+    : `<option value="${me?.id}">${me?.name||'?'}</option>`;
   const today = fmt(new Date());
   showModal('<h2>&#128663; Nuova prenotazione</h2>' +
     '<div class="field"><label>Mezzo</label>' +
@@ -605,9 +625,11 @@ async function checkConflict() {
   const area  = document.getElementById('conflict-area');
   const btn   = document.getElementById('bk-btn');
   if (!vehId || !date) return;
-  const stop = vehicleStops.find(s=>s.vehicle_id===vehId&&s.start_date<=date&&s.end_date>=date);
-  if (stop) {
-    area.innerHTML = '<div class="conflict-box">&#9888;&#65039; <strong>Mezzo non disponibile</strong><br>In fermo: '+stop.reason+' ('+isoDisp(stop.start_date)+' - '+isoDisp(stop.end_date)+')</div>';
+  const block = isVehicleBlocked(vehId, date);
+  if (block) {
+    const icon = block.type === 'scadenza' ? '📋' : '🔧';
+    area.innerHTML = `<div class="conflict-box">${icon} <strong>Mezzo non disponibile</strong><br>
+      ${block.reason}${block.from !== block.to ? ' ('+isoDisp(block.from)+' – '+isoDisp(block.to)+')' : ' ('+isoDisp(block.from)+')'}</div>`;
     btn.disabled = true; return;
   }
   const { data } = await sb.from('vehicle_bookings').select('*').eq('vehicle_id',vehId).eq('date',date).neq('status','cancelled');
@@ -634,15 +656,16 @@ async function saveBooking() {
   const dest     = document.getElementById('bk-dest').value.trim();
   const notes    = document.getElementById('bk-notes').value.trim();
   const me       = myProfile();
-  const forEmail = isGestore() ? document.getElementById('bk-for').value : me?.email;
-  const forPerson = bookingRoles.find(r=>r.email===forEmail);
+  const forId    = isGestore() ? +document.getElementById('bk-for').value : me?.id;
+  const forPerson = bookingRoles.find(r => r.id === forId) || me;
   if (!dest) { toast('Inserisci la destinazione'); return; }
   const veh = vehicles.find(v=>v.id===vehId);
   const { error } = await sb.from('vehicle_bookings').insert({
-    vehicle_id: vehId, booker_email: forEmail,
-    booker_name: forPerson?.name||forEmail,
+    vehicle_id: vehId,
+    booker_email: forPerson?.email || null,
+    booker_name: forPerson?.name || '?',
     date, time_slot: slot, destination: dest, notes,
-    status: 'confirmed', created_by: me?.name||currentUser.email
+    status: 'confirmed', created_by: me?.name || currentUser?.email || '?'
   });
   if (error) { toast('Errore: '+error.message); return; }
   await loadBookings();
