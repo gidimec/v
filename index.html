@@ -2261,54 +2261,105 @@ async function renderUsers() {
   document.getElementById('usr-list').innerHTML = usersList.map(u => `
     <div class="panel-row">
       <div style="flex:1">
-        <div style="font-weight:500">${u.name}</div>
-        <div style="font-size:11px;color:var(--text2)">${u.email}</div>
+        <div style="font-weight:500">${u.name}${u.department?` <span style="font-size:10px;color:var(--text2);font-weight:400">· ${u.department}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--text2)">${u.email||'Solo PIN'}
+          ${u.pin?` <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:var(--blue-bg);color:var(--blue-dark)">🔢 PIN</span>`:''}
+          ${u.can_book?` <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green-dark)">🚗 Prenota</span>`:''}
+        </div>
       </div>
-      <span class="role-badge ${roleClass[u.role]}" style="margin-right:8px">${roleLabel[u.role]}</span>
-      <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openUserModal('${u.email}')">✏️</span>
-      <span class="tag" style="cursor:pointer;background:var(--red-bg);color:var(--red)" onclick="confirmDeleteUser('${u.email}','${u.name}')">🗑️</span>
+      <span class="role-badge ${roleClass[u.role]||'role-viewer'}" style="margin-right:8px">${roleLabel[u.role]||u.role}</span>
+      <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openUserModal('${u.email||''}','${u.name}')">✏️</span>
+      <span class="tag" style="cursor:pointer;background:var(--red-bg);color:var(--red)" onclick="confirmDeleteUser('${u.email||''}','${u.name}')">🗑️</span>
     </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun utente</div>';
 }
-function openUserModal(email) {
-  const u = email ? usersList.find(x => x.email === email) : null;
+
+function openUserModal(email, nameHint) {
+  const u = email ? usersList.find(x => x.email === email) : (nameHint ? usersList.find(x => x.name === nameHint) : null);
   const roleOpts = ['admin','operatore','viewer'].map(r => {
     const labels = { admin:'Amministratore', operatore:'Operatore', viewer:'Visualizzatore' };
     return `<option value="${r}" ${u&&u.role===r?'selected':''}>${labels[r]}</option>`;
   }).join('');
   showModal(`<h2>${u?'Modifica utente':'Nuovo utente'}</h2>
-    ${!u?'<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">⚠️ Crea prima l\'utente su Supabase → Authentication → Add user, poi aggiungilo qui.</div>':''}
-    <div class="field"><label>Nome</label><input id="fu-name" value="${u?u.name:''}" placeholder="es. Marco Rossi"></div>
-    <div class="field"><label>Email</label><input id="fu-email" value="${u?u.email:''}" placeholder="email@esempio.com" ${u?'readonly style="opacity:.6"':''}></div>
-    <div class="field"><label>Ruolo</label><select id="fu-role">${roleOpts}</select></div>
+    ${!u?`<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">
+      ⚠️ Per accesso con email: crea prima l'utente su Supabase → Authentication.<br>
+      Per solo PIN: lascia email vuota.
+    </div>`:''}
+    <div class="frow">
+      <div class="field"><label>Nome</label>
+        <input id="fu-name" value="${u?u.name:''}" placeholder="es. Marco Rossi">
+      </div>
+      <div class="field"><label>Reparto</label>
+        <input id="fu-dept" value="${u?.department||''}" placeholder="es. Magazzino">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Email (opzionale)</label>
+        <input id="fu-email" value="${u?u.email||'':''}" placeholder="email@esempio.com" ${u&&u.email?'readonly style="opacity:.6"':''}>
+      </div>
+      <div class="field"><label>Ruolo gestionale</label>
+        <select id="fu-role">${roleOpts}</select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>PIN a 5 cifre (opzionale)</label>
+        <input id="fu-pin" type="password" inputmode="numeric" maxlength="5"
+          value="${u?.pin||''}" placeholder="es. 12345"
+          style="letter-spacing:4px;text-align:center">
+      </div>
+      <div class="field" style="display:flex;align-items:flex-end;padding-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
+          <input type="checkbox" id="fu-canbook" ${u?.can_book?'checked':''} style="width:16px;height:16px">
+          <span>Accesso app prenotazioni</span>
+        </label>
+      </div>
+    </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn primary" onclick="saveUser('${email||''}')">Salva</button>
+      <button class="btn primary" onclick="saveUser('${u?.email||''}','${u?.name||''}')">Salva</button>
     </div>`);
 }
-async function saveUser(existingEmail) {
-  const name  = document.getElementById('fu-name').value.trim();
-  const email = existingEmail || document.getElementById('fu-email').value.trim().toLowerCase();
-  const role  = document.getElementById('fu-role').value;
+
+async function saveUser(existingEmail, existingName) {
+  const name     = document.getElementById('fu-name').value.trim();
+  const dept     = document.getElementById('fu-dept').value.trim();
+  const email    = (existingEmail || document.getElementById('fu-email').value.trim().toLowerCase()) || null;
+  const role     = document.getElementById('fu-role').value;
+  const pin      = document.getElementById('fu-pin').value.trim() || null;
+  const can_book = document.getElementById('fu-canbook').checked;
+
   if (!name) { toast('Inserisci il nome'); return; }
-  if (!email) { toast('Inserisci la email'); return; }
-  if (existingEmail) {
-    const { error } = await sb.from('user_roles').update({ name, role }).eq('email', email);
-    if (error) { toast('Errore aggiornamento'); return; }
+  if (pin && pin.length !== 5) { toast('Il PIN deve essere di 5 cifre'); return; }
+  if (!email && !pin) { toast('Inserisci almeno email o PIN'); return; }
+
+  const payload = { name, department: dept, role, can_book, pin };
+
+  if (existingEmail || existingName) {
+    // Aggiorna esistente
+    let query = sb.from('user_roles').update(payload);
+    if (existingEmail) query = query.eq('email', existingEmail);
+    else query = query.eq('name', existingName);
+    const { error } = await query;
+    if (error) { toast('Errore aggiornamento: '+error.message); return; }
     toast('Utente aggiornato');
   } else {
-    const { error } = await sb.from('user_roles').insert({ email, name, role });
-    if (error) { toast('Errore: email già presente o non valida'); return; }
+    // Nuovo utente
+    const { error } = await sb.from('user_roles').insert({ ...payload, email });
+    if (error) { toast('Errore: '+error.message); return; }
     toast('Utente aggiunto');
   }
   closeModal(); renderUsers();
 }
+
 function confirmDeleteUser(email, name) {
   safeDeleteModal('Rimuovi accesso',
-    `Stai per rimuovere l'accesso di <strong>${name}</strong> (${email}).<br>L'utente non potrà più accedere.`,
-    `()=>deleteUser('${email}')`);
+    `Stai per rimuovere l'accesso di <strong>${name}</strong>${email?' ('+email+')':''}.<br>L'utente non potrà più accedere.`,
+    `()=>deleteUser('${email}','${name}')`);
 }
-async function deleteUser(email) {
-  const { error } = await sb.from('user_roles').delete().eq('email', email);
+async function deleteUser(email, name) {
+  let query = sb.from('user_roles').delete();
+  if (email) query = query.eq('email', email);
+  else query = query.eq('name', name);
+  const { error } = await query;
   if (error) { toast('Errore eliminazione'); return; }
   closeModal(); renderUsers(); toast('Accesso rimosso');
 }

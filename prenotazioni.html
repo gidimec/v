@@ -229,9 +229,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
     </div>
 
     <div id="view-admin" class="panel" style="display:none">
-      <div class="tab-bar">
-        <div class="tab active" id="atab-people" onclick="switchAdminTab('people')">Persone autorizzate</div>
-        <div class="tab" id="atab-all" onclick="switchAdminTab('all')">Tutte le prenotazioni</div>
+      <div class="section-head">
+        <span class="section-title">Tutte le prenotazioni</span>
+        <div style="font-size:11px;color:var(--text2)">Gestione persone → usa il Gestionale Trasporti</div>
       </div>
       <div id="admin-body"></div>
     </div>
@@ -297,8 +297,7 @@ function switchLoginTab(tab) {
 }
 
 async function loadPinNames() {
-  // Carica solo persone con PIN impostato (non hanno email Supabase)
-  const { data } = await sb.from('booking_roles').select('id,name,pin').eq('active',true).not('pin','is',null);
+  const { data } = await sb.from('user_roles').select('id,name,pin').eq('can_book',true).not('pin','is',null);
   const sel = document.getElementById('ls-pin-name');
   if (!sel) return;
   sel.innerHTML = '<option value="">-- Seleziona il tuo nome --</option>' +
@@ -312,12 +311,11 @@ async function doLoginPin() {
   err.textContent = '';
   if (!personId) { err.textContent = 'Seleziona il tuo nome'; return; }
   if (!pin || pin.length !== 5) { err.textContent = 'Inserisci il PIN a 5 cifre'; return; }
-  // Verifica PIN lato client (booking_roles è public read)
-  const { data: person } = await sb.from('booking_roles').select('*').eq('id', +personId).eq('pin', pin).eq('active', true).single();
+  const { data: person } = await sb.from('user_roles').select('*').eq('id', +personId).eq('pin', pin).eq('can_book', true).single();
   if (!person) { err.textContent = 'PIN errato'; return; }
-  // Login PIN: non usa Supabase Auth, gestisco sessione in localStorage
   currentUser = { id: 'pin_'+person.id, email: null, isPinUser: true };
-  await onLoginPerson(person);
+  const mappedRole = (person.role==='admin'||person.role==='operatore') ? 'gestore' : 'utente';
+  await onLoginPerson({ ...person, role: mappedRole });
 }
 
 async function onLoginPerson(person) {
@@ -352,12 +350,18 @@ async function doLogin() {
 
 async function onLogin(user) {
   currentUser = user;
-  const { data: rd } = await sb.from('booking_roles').select('*').eq('email', user.email).single();
-  if (!rd || !rd.active) {
-    document.getElementById('ls-err').textContent = 'Account non abilitato. Contatta il responsabile.';
+  const { data: rd } = await sb.from('user_roles').select('*').eq('email', user.email).single();
+  if (!rd) {
+    document.getElementById('ls-err').textContent = 'Utente non trovato. Contatta il responsabile.';
     await sb.auth.signOut(); return;
   }
-  await onLoginPerson(rd);
+  if (!rd.can_book && rd.role === 'viewer') {
+    document.getElementById('ls-err').textContent = 'Non hai accesso alle prenotazioni. Contatta il responsabile.';
+    await sb.auth.signOut(); return;
+  }
+  // Mappa ruolo: admin/operatore → gestore, viewer con can_book → utente
+  const mappedRole = (rd.role === 'admin' || rd.role === 'operatore') ? 'gestore' : 'utente';
+  await onLoginPerson({ ...rd, role: mappedRole });
 }
 
 function startAutoRefresh() {
@@ -380,7 +384,7 @@ async function loadAll() {
   const { from, to } = weekRange();
   const [{ data: v },{ data: br },{ data: bk },{ data: vs }] = await Promise.all([
     sb.from('vehicles').select('*').eq('active',true).eq('bookable',true).order('name'),
-    sb.from('booking_roles').select('*').eq('active',true).order('name'),
+    sb.from('user_roles').select('*').eq('can_book',true).order('name'),
     sb.from('vehicle_bookings').select('*').gte('date',from).lte('date',to).neq('status','cancelled'),
     sb.from('vehicle_stops').select('*'),
   ]);
@@ -537,49 +541,21 @@ function renderVehicles() {
   }).join('') || '<div class="empty"><div class="empty-icon">&#128667;</div><p>Nessun mezzo.</p></div>';
 }
 
-function switchAdminTab(tab) {
-  adminTab = tab;
-  document.getElementById('atab-people').classList.toggle('active', tab==='people');
-  document.getElementById('atab-all').classList.toggle('active', tab==='all');
-  renderAdmin();
-}
-
 async function renderAdmin() {
   const body = document.getElementById('admin-body');
   body.innerHTML = '<div style="padding:20px;text-align:center"><div class="spinner"></div></div>';
-  if (adminTab==='people') {
-    const { data } = await sb.from('booking_roles').select('*').order('name');
-    const all = data || [];
-    body.innerHTML =
-      '<div class="section-head" style="margin-bottom:10px">' +
-        '<span class="section-title">Persone autorizzate</span>' +
-        '<button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="openPersonModal(null)">+ Aggiungi</button>' +
+  const { data } = await sb.from('vehicle_bookings').select('*').neq('status','cancelled').order('date',{ascending:true}).limit(200);
+  const all = data || [];
+  body.innerHTML = all.length ? all.map(bk => {
+    const veh = vehicles.find(v=>v.id===bk.vehicle_id);
+    return '<div class="list-row">' +
+      '<div class="lr-info">' +
+        '<div class="lr-name">'+(bk.booker_name||'?')+' &middot; '+isoDisp(bk.date)+' &middot; '+SLOT_LABEL[bk.time_slot]+'</div>' +
+        '<div class="lr-sub">&#128667; '+(veh?.name||'?')+' &middot; '+(bk.destination||'&mdash;')+(bk.notes?' &middot; '+bk.notes:'')+'</div>' +
       '</div>' +
-      (all.map(p =>
-        '<div class="list-row">' +
-          '<div class="avatar" style="'+(p.active?'':'opacity:.4')+'">'+p.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase()+'</div>' +
-          '<div class="lr-info"><div class="lr-name">'+p.name+'</div><div class="lr-sub">'+p.email+(p.department?' &middot; '+p.department:'')+'</div></div>' +
-          '<div class="badge '+(p.role==='gestore'?'role-gestore':'role-utente')+'">'+(p.role==='gestore'?'Gestore':'Utente')+'</div>' +
-          '<div class="badge '+(p.active?'badge-green':'badge-gray')+'">'+(p.active?'Attivo':'Disabilitato')+'</div>' +
-          '<button class="btn" style="padding:4px 10px;font-size:11px" onclick="openPersonModal('+p.id+')">&#9998;</button>' +
-          '<button class="btn" style="padding:4px 10px;font-size:11px;color:'+(p.active?'var(--red)':'var(--green)')+'" onclick="togglePerson('+p.id+','+p.active+')">'+(p.active?'&#128683;':'&#9989;')+'</button>' +
-        '</div>'
-      ).join('') || '<div class="empty"><div class="empty-icon">&#128101;</div><p>Nessuna persona.</p></div>');
-  } else {
-    const { data } = await sb.from('vehicle_bookings').select('*').neq('status','cancelled').order('date',{ascending:true}).limit(200);
-    const all = data || [];
-    body.innerHTML = '<div class="section-head"><span class="section-title">Tutte le prenotazioni</span></div>' +
-      (all.length ? all.map(bk => {
-        const veh = vehicles.find(v=>v.id===bk.vehicle_id);
-        return '<div class="list-row">' +
-          '<div class="lr-info">' +
-            '<div class="lr-name">'+(bk.booker_name||'?')+' &middot; '+isoDisp(bk.date)+' &middot; '+SLOT_LABEL[bk.time_slot]+'</div>' +
-            '<div class="lr-sub">&#128667; '+(veh?.name||'?')+' &middot; '+(bk.destination||'&mdash;')+(bk.notes?' &middot; '+bk.notes:'')+'</div>' +
-          '</div>' +
-          '<button class="btn danger" style="padding:4px 10px;font-size:11px" onclick="cancelBooking('+bk.id+')">Annulla</button>' +
-          '</div>';
-      }).join('') : '<div class="empty"><div class="empty-icon">&#128203;</div><p>Nessuna prenotazione.</p></div>');
-  }
+      '<button class="btn danger" style="padding:4px 10px;font-size:11px" onclick="cancelBooking('+bk.id+')">Annulla</button>' +
+    '</div>';
+  }).join('') : '<div class="empty"><div class="empty-icon">&#128203;</div><p>Nessuna prenotazione attiva.</p></div>';
 }
 
 function openBookingModal(preVehicleId, preDate) {
@@ -757,22 +733,22 @@ async function savePerson(id) {
   if (!p && email) payload.email = email;
   let error;
   if (id) {
-    ({ error } = await sb.from('booking_roles').update(payload).eq('id',id));
+    ({ error } = await sb.from('user_roles').update(payload).eq('id',id));
   } else {
-    ({ error } = await sb.from('booking_roles').insert({...payload, email: email||null, active:true}));
+    ({ error } = await sb.from('user_roles').insert({...payload, email: email||null, active:true}));
   }
   if (error) { toast('Errore: '+error.message); return; }
   toast(id ? 'Persona aggiornata' : 'Persona aggiunta');
   closeModal();
-  const { data } = await sb.from('booking_roles').select('*').eq('active',true).order('name');
+  const { data } = await sb.from('user_roles').select('*').eq('can_book',true).order('name');
   bookingRoles = data||[];
   renderAdmin();
 }
 
 async function togglePerson(id, current) {
-  await sb.from('booking_roles').update({active:!current}).eq('id',id);
+  await sb.from('user_roles').update({active:!current}).eq('id',id);
   toast(current ? 'Persona disabilitata' : 'Persona riabilitata');
-  const { data } = await sb.from('booking_roles').select('*').order('name');
+  const { data } = await sb.from('user_roles').select('*').order('name');
   bookingRoles = (data||[]).filter(r=>r.active);
   renderAdmin();
 }
