@@ -298,23 +298,32 @@ function switchLoginTab(tab) {
 }
 
 async function loadPinNames() {
-  const { data } = await sb.from('user_roles').select('id,name,pin').eq('can_book',true).not('pin','is',null);
+  const { data, error } = await sb.from('user_roles').select('email,name,pin').eq('can_book',true).not('pin','is',null);
   const sel = document.getElementById('ls-pin-name');
   if (!sel) return;
+  if (error || !data || data.length === 0) {
+    sel.innerHTML = '<option value="">Nessun utente con PIN configurato</option>';
+    return;
+  }
   sel.innerHTML = '<option value="">-- Seleziona il tuo nome --</option>' +
-    (data||[]).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    data.map(p => `<option value="${encodeURIComponent(p.email||p.name)}">${p.name}</option>`).join('');
 }
 
 async function doLoginPin() {
-  const personId = document.getElementById('ls-pin-name').value;
-  const pin      = document.getElementById('ls-pin').value.trim();
-  const err      = document.getElementById('ls-pin-err');
+  const personKey = document.getElementById('ls-pin-name').value;
+  const pin       = document.getElementById('ls-pin').value.trim();
+  const err       = document.getElementById('ls-pin-err');
   err.textContent = '';
-  if (!personId) { err.textContent = 'Seleziona il tuo nome'; return; }
+  if (!personKey) { err.textContent = 'Seleziona il tuo nome'; return; }
   if (!pin || pin.length !== 5) { err.textContent = 'Inserisci il PIN a 5 cifre'; return; }
-  const { data: person } = await sb.from('user_roles').select('*').eq('id', +personId).eq('pin', pin).eq('can_book', true).single();
-  if (!person) { err.textContent = 'PIN errato'; return; }
-  currentUser = { id: 'pin_'+person.id, email: null, isPinUser: true };
+  const decoded = decodeURIComponent(personKey);
+  // Cerca per email o per nome
+  const { data: person } = await sb.from('user_roles').select('*')
+    .eq('pin', pin).eq('can_book', true)
+    .or(`email.eq.${decoded},name.eq.${decoded}`)
+    .single();
+  if (!person) { err.textContent = 'PIN non corretto'; return; }
+  currentUser = { id: 'pin_'+(person.email||person.name), email: null, isPinUser: true };
   const mappedRole = (person.role==='admin'||person.role==='operatore') ? 'gestore' : 'utente';
   await onLoginPerson({ ...person, role: mappedRole });
 }
@@ -576,21 +585,32 @@ async function renderAdmin() {
   }).join('') : '<div class="empty"><div class="empty-icon">&#128203;</div><p>Nessuna prenotazione attiva.</p></div>';
 }
 
-function openBookingModal(preVehicleId, preDate) {
+async function openBookingModal(preVehicleId, preDate) {
   if (!canBook()) { toast('Non sei abilitato a prenotare'); return; }
+  // Ricarica lista persone fresca
+  const { data: freshRoles } = await sb.from('user_roles').select('*').eq('can_book',true).order('name');
+  if (freshRoles) bookingRoles = freshRoles;
+
   const vehOpts = vehicles.map(v =>
     '<option value="'+v.id+'" '+(preVehicleId===v.id?'selected':'')+'>'+v.name+' &middot; '+v.plate+'</option>').join('');
   const me = myProfile();
   const myId = me?.id;
-  const forOpts = isGestore()
-    ? bookingRoles.map(r => `<option value="${r.id}" ${r.id===myId?'selected':''}>${r.name}${r.department?' ('+r.department+')':''}</option>`).join('')
-    : `<option value="${me?.id}">${me?.name||'?'}</option>`;
+
+  // Gestore: vede tutti ma con il suo nome già selezionato
+  // Utente normale: vede solo il suo nome (campo bloccato)
+  const forField = isGestore()
+    ? '<div class="field"><label>Per conto di</label><select id="bk-for">' +
+        bookingRoles.map(r => '<option value="'+r.id+'" '+(r.id===myId?'selected':'')+'>'+r.name+(r.department?' ('+r.department+')':'')+'</option>').join('') +
+      '</select></div>'
+    : '<div class="field"><label>Prenotazione per</label>' +
+        '<input type="text" value="'+(me?.name||'?')+'" readonly style="opacity:.8;cursor:default">' +
+        '<input type="hidden" id="bk-for" value="'+(myId||'')+'"></div>';
   const today = fmt(new Date());
   showModal('<h2>&#128663; Nuova prenotazione</h2>' +
     '<div class="field"><label>Mezzo</label>' +
       '<select id="bk-veh" onchange="checkConflict()">'+vehOpts+'</select>' +
     '</div>' +
-    (isGestore() ? '<div class="field"><label>Per conto di</label><select id="bk-for">'+forOpts+'</select></div>' : '') +
+    forField +
     '<div class="frow">' +
       '<div class="field"><label>Data</label>' +
         '<input id="bk-date" type="date" value="'+(preDate||today)+'" onchange="checkConflict()">' +

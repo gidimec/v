@@ -343,6 +343,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       <div class="sb-icon"        title="Destinazioni" onclick="switchView('addr')">📍</div>
       <div class="sb-icon"        title="Autisti"      onclick="switchView('drv')">👤</div>
       <div class="sb-icon"        title="Veicoli"      onclick="switchView('veh')">🚛</div>
+      <div class="sb-icon"        title="Assenze"      onclick="switchView('abs')">🏖️</div>
       <div class="sb-icon"        title="Utenti"       onclick="switchView('usr')">🔑</div>
       <div class="sb-icon"        title="Log"          onclick="switchView('log')">📋</div>
     </div>
@@ -389,6 +390,20 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       <div class="veh-body" id="veh-body"></div>
     </div>
 
+    <!-- ASSENZE -->
+    <div id="view-abs" class="panel" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0">Assenze & Presenze</h3>
+        <button class="btn primary" style="padding:5px 12px;font-size:12px" onclick="openAbsenceModal(null)">+ Segnala assenza</button>
+      </div>
+      <div class="tab-bar" style="margin-bottom:14px">
+        <div class="tab active" id="abs-tab-cur" onclick="switchAbsTab('current')">📅 Correnti / Future</div>
+        <div class="tab" id="abs-tab-hist" onclick="switchAbsTab('history')">📋 Storico</div>
+        <div class="tab" id="abs-tab-staff" onclick="switchAbsTab('staff')">👥 Staff</div>
+      </div>
+      <div id="abs-body"></div>
+    </div>
+
     <!-- UTENTI -->
     <div id="view-usr" class="panel" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -430,6 +445,8 @@ let vehicles = [];
 let deadlines    = [];
 let vehicleHist  = [];
 let vehicleStops = [];
+let absences     = [];
+let staffList    = [];
 let currentUser = null;
 let weekOffset  = 0;
 let currentVehTab = 'fleet';
@@ -509,7 +526,7 @@ async function init() {
 }
 
 async function loadAll() {
-  const [{ data: d }, { data: ds }, { data: t }, { data: l }, { data: v }, { data: dl }, { data: vh }, { data: vs }] = await Promise.all([
+  const [{ data: d }, { data: ds }, { data: t }, { data: l }, { data: v }, { data: dl }, { data: vh }, { data: vs }, { data: ab }] = await Promise.all([
     sb.from('drivers').select('*').eq('active', true).order('id'),
     sb.from('destinations').select('*').order('name'),
     sb.from('trips').select('*').eq('week_offset', weekOffset).order('start_slot'),
@@ -518,6 +535,7 @@ async function loadAll() {
     sb.from('vehicle_deadlines').select('*').order('deadline_date'),
     sb.from('vehicle_history').select('*').order('date', { ascending: false }),
     sb.from('vehicle_stops').select('*').order('start_date', { ascending: false }),
+    sb.from('absences').select('*').order('date_from'),
   ]);
   drivers       = d  || [];
   dests         = (ds || []).map(x => x.name);
@@ -527,7 +545,7 @@ async function loadAll() {
   deadlines     = dl || [];
   vehicleHist   = vh || [];
   vehicleStops  = vs || [];
-  // Aggiorna datalist globale
+  absences      = ab || [];
   const dlEl = document.getElementById('dl-dests');
   if (dlEl) dlEl.innerHTML = dests.map(d => `<option value="${d}">`).join('');
 }
@@ -1419,7 +1437,12 @@ function renderStopList() {
   list.innerHTML = _tripStops.map((s,i) => {
     return `<div class="stop-item">
       <div class="stop-num">${i+1}</div>
-      <input list="dl-dests" value="${s.dest}" placeholder="Destinazione…" oninput="_tripStops[${i}].dest=this.value">
+      <input type="text" list="dl-dests" autocomplete="on"
+        value="${s.dest}" placeholder="Scrivi o clicca due volte…"
+        oninput="_tripStops[${i}].dest=this.value"
+        ondblclick="this.value='';this.dispatchEvent(new Event('input'));this.setAttribute('list','dl-dests')"
+        onfocus="if(this.value==='')this.dispatchEvent(new MouseEvent('click'))"
+        style="flex:1;border:none;background:transparent;font-size:12px;color:var(--text);outline:none;padding:0;width:100%">
       ${_tripStops.length>1?`<button class="stop-rm" onclick="removeStop(${i})">✕</button>`:'<div style="width:20px"></div>'}
     </div>`;
   }).join('');
@@ -1582,16 +1605,17 @@ async function _deleteSelectedTrips() {
 // ══════════════════════════════════════════════════════════
 function switchView(v) {
   if ((v==='log'||v==='usr') && !isAdmin()) { toast('Accesso riservato agli amministratori'); return; }
-  if ((v==='addr'||v==='drv'||v==='veh') && !canEdit()) { toast('Accesso riservato agli operatori'); return; }
-  ['cal','addr','drv','veh','usr','log'].forEach(x => {
+  if ((v==='addr'||v==='drv'||v==='veh'||v==='abs') && !canEdit()) { toast('Accesso riservato agli operatori'); return; }
+  ['cal','addr','drv','veh','abs','usr','log'].forEach(x => {
     const el = document.getElementById('view-'+x);
-    el.style.display = x===v ? (x==='cal'?'flex':x==='veh'?'flex':'block') : 'none';
+    if (el) el.style.display = x===v ? (x==='cal'?'flex':x==='veh'?'flex':'block') : 'none';
   });
-  document.querySelectorAll('.sb-icon').forEach((el,i) => el.classList.toggle('active', ['cal','addr','drv','veh','usr','log'][i]===v));
+  document.querySelectorAll('.sb-icon').forEach((el,i) => el.classList.toggle('active', ['cal','addr','drv','veh','abs','usr','log'][i]===v));
   document.getElementById('week-nav-wrap').style.display = v==='cal' ? 'flex' : 'none';
   if (v==='addr') renderDests();
   if (v==='drv')  renderDrivers();
   if (v==='veh')  renderVehPanel();
+  if (v==='abs')  renderAbsences();
   if (v==='usr')  renderUsers();
   if (v==='log')  renderLog();
 }
