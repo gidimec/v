@@ -806,7 +806,14 @@ function renderCalOraria() {
         <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
       </div>
       <div style="display:flex;border-top:0.5px solid var(--border)">
-        ${dayCols.map(c=>`<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="flex:1;color:${c.id==='extra'?'var(--text3)':c.color}">${c.name.split(' ')[0]}</div>`).join('')}
+        ${dayCols.map(c => {
+          const dateStr = fmt(d);
+          const isAbsent = c.id !== 'extra' && absences.some(a =>
+            a.driver_id === c.id && a.date_from <= dateStr && a.date_to >= dateStr);
+          const label = c.name.split(' ')[0] + (isAbsent ? ' 🏖️' : '');
+          const style = `flex:1;color:${c.id==='extra'?'var(--text3)':isAbsent?'var(--text3)':c.color};${isAbsent?'text-decoration:line-through;':''}`;
+          return `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="${style}" title="${isAbsent?c.name+' assente':''}">${label}</div>`;
+        }).join('')}
       </div>
     </div>`;
   });
@@ -834,7 +841,10 @@ function renderCalOraria() {
       const dayCols = isSab ? colsSab : colsFull;
       html += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;display:flex;border-left:0.5px solid var(--border2)">`;
       dayCols.forEach(c => {
-        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border)"></div>`;
+        const dateStr = fmt(getWeekDates()[di]);
+        const isAbsent = c.id !== 'extra' && absences.some(a =>
+          a.driver_id === c.id && a.date_from <= dateStr && a.date_to >= dateStr);
+        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(0,0,0,.035);':''}"></div>`;
       });
       html += `</div>`;
     }
@@ -2262,6 +2272,211 @@ async function _deleteStop(id) {
 // ══════════════════════════════════════════════════════════
 //  LOG
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+//  ASSENZE
+// ══════════════════════════════════════════════════════════
+let absTab = 'current';
+
+function switchAbsTab(tab) {
+  absTab = tab;
+  ['current','history','staff'].forEach(t => {
+    const el = document.getElementById('abs-tab-'+t);
+    if (el) el.classList.toggle('active', t === tab);
+  });
+  renderAbsences();
+}
+
+async function renderAbsences() {
+  const body = document.getElementById('abs-body');
+  if (!body) return;
+  body.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">Caricamento…</div>';
+
+  // Ricarica assenze fresche
+  const { data } = await sb.from('absences').select('*').order('date_from');
+  absences = data || [];
+
+  const today = new Date().toISOString().split('T')[0];
+  const REASON_ICON = { ferie:'🏖️', malattia:'🤒', permesso:'🕐', altro:'📝' };
+  const REASON_LABEL = { ferie:'Ferie', malattia:'Malattia', permesso:'Permesso', altro:'Altro' };
+  const TYPE_LABEL = { autista:'Autista', staff:'Staff' };
+
+  let filtered = [];
+  if (absTab === 'current') {
+    filtered = absences.filter(a => a.date_to >= today);
+  } else if (absTab === 'history') {
+    filtered = absences.filter(a => a.date_to < today);
+  } else if (absTab === 'staff') {
+    filtered = absences.filter(a => a.person_type === 'staff');
+  }
+
+  if (!filtered.length) {
+    body.innerHTML = `<div style="color:var(--text3);font-size:12px;padding:16px;text-align:center">
+      ${absTab === 'current' ? 'Nessuna assenza corrente o futura' :
+        absTab === 'history' ? 'Nessuna assenza passata' : 'Nessuno staff registrato'}
+    </div>`;
+    return;
+  }
+
+  body.innerHTML = filtered.map(a => {
+    const icon = REASON_ICON[a.reason] || '📝';
+    const isActive = a.date_from <= today && a.date_to >= today;
+    const isFuture = a.date_from > today;
+    const statusColor = isActive ? 'var(--orange)' : isFuture ? 'var(--blue)' : 'var(--text3)';
+    const statusLabel = isActive ? 'In corso' : isFuture ? 'Programmata' : 'Conclusa';
+    return `<div class="panel-row" style="align-items:flex-start">
+      <div style="font-size:20px;flex-shrink:0">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:500">${a.person_name}
+          <span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:4px">${TYPE_LABEL[a.person_type]||a.person_type}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">
+          ${REASON_LABEL[a.reason]||a.reason} · ${isoDispAbs(a.date_from)} – ${isoDispAbs(a.date_to)}
+        </div>
+        ${a.notes ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">📝 ${a.notes}</div>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${statusColor}22;color:${statusColor};font-weight:500">${statusLabel}</span>
+        ${canEdit() ? `
+          <span style="cursor:pointer;font-size:12px" onclick="openAbsenceModal(${a.id})">✏️</span>
+          <span style="cursor:pointer;font-size:12px" onclick="deleteAbsence(${a.id})">🗑️</span>
+        ` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function isoDispAbs(iso) {
+  if (!iso) return '?';
+  const [y,m,g] = iso.split('-');
+  return `${g}/${m}/${y}`;
+}
+
+function openAbsenceModal(id) {
+  const a = id ? absences.find(x => x.id === id) : null;
+
+  // Opzioni autisti
+  const driverOpts = `<option value="">-- Staff / Altro --</option>` +
+    drivers.map(d => `<option value="${d.id}" ${a&&a.driver_id===d.id?'selected':''}>${d.name}</option>`).join('');
+
+  const reasonOpts = ['ferie','malattia','permesso','altro'].map(r =>
+    `<option value="${r}" ${a&&a.reason===r?'selected':r==='ferie'?'selected':''}>
+      ${{ferie:'🏖️ Ferie', malattia:'🤒 Malattia', permesso:'🕐 Permesso', altro:'📝 Altro'}[r]}
+    </option>`).join('');
+
+  const today = new Date().toISOString().split('T')[0];
+
+  showModal(`<h2>${a ? 'Modifica assenza' : 'Segnala assenza'}</h2>
+    <div class="field"><label>Tipo persona</label>
+      <select id="fa-type" onchange="toggleAbsDriverField()">
+        <option value="autista" ${!a||a.person_type==='autista'?'selected':''}>🚌 Autista</option>
+        <option value="staff" ${a&&a.person_type==='staff'?'selected':''}>👥 Staff (magazzino, ufficio…)</option>
+      </select>
+    </div>
+    <div id="fa-driver-wrap" class="field">
+      <label>Autista</label>
+      <select id="fa-driver" onchange="syncAbsName()">${driverOpts}</select>
+    </div>
+    <div class="field"><label>Nome</label>
+      <input id="fa-name" value="${a?a.person_name:''}" placeholder="es. Mario Rossi">
+    </div>
+    <div class="field"><label>Motivo</label>
+      <select id="fa-reason">${reasonOpts}</select>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Dal</label>
+        <input id="fa-from" type="date" value="${a?a.date_from:today}">
+      </div>
+      <div class="field"><label>Al</label>
+        <input id="fa-to" type="date" value="${a?a.date_to:today}">
+      </div>
+    </div>
+    <div class="field"><label>Note</label>
+      <textarea id="fa-notes">${a&&a.notes?a.notes:''}</textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="saveAbsence(${id||'null'})">Salva</button>
+    </div>`);
+
+  // Inizializza visibilità campo autista
+  toggleAbsDriverField();
+}
+
+function toggleAbsDriverField() {
+  const type = document.getElementById('fa-type')?.value;
+  const wrap = document.getElementById('fa-driver-wrap');
+  if (wrap) wrap.style.display = type === 'autista' ? 'block' : 'none';
+  if (type === 'staff') {
+    const nameEl = document.getElementById('fa-name');
+    if (nameEl && !nameEl.value) nameEl.focus();
+  }
+}
+
+function syncAbsName() {
+  const drvId = +document.getElementById('fa-driver')?.value;
+  const drv = drivers.find(d => d.id === drvId);
+  if (drv) {
+    const nameEl = document.getElementById('fa-name');
+    if (nameEl) nameEl.value = drv.name;
+  }
+}
+
+async function saveAbsence(id) {
+  const person_type = document.getElementById('fa-type').value;
+  const driver_id   = person_type === 'autista' ? (+document.getElementById('fa-driver').value || null) : null;
+  const person_name = document.getElementById('fa-name').value.trim();
+  const reason      = document.getElementById('fa-reason').value;
+  const date_from   = document.getElementById('fa-from').value;
+  const date_to     = document.getElementById('fa-to').value;
+  const notes       = document.getElementById('fa-notes').value.trim();
+
+  if (!person_name) { toast('Inserisci il nome'); return; }
+  if (!date_from || !date_to) { toast('Inserisci le date'); return; }
+  if (date_to < date_from) { toast('La data fine deve essere dopo la data inizio'); return; }
+
+  const payload = { person_name, person_type, driver_id, reason, date_from, date_to, notes, created_by: currentUser.name };
+
+  let error;
+  if (id) {
+    ({ error } = await sb.from('absences').update(payload).eq('id', id));
+  } else {
+    ({ error } = await sb.from('absences').insert(payload));
+  }
+
+  if (error) { toast('Errore: ' + error.message); return; }
+
+  await sb.from('activity_log').insert({
+    username: currentUser.name,
+    action: `${id?'Modificata':'Aggiunta'} assenza: ${person_name} (${reason}) ${date_from} – ${date_to}`
+  });
+
+  closeModal();
+  renderAbsences();
+
+  // Aggiorna calendario se l'autista è assente questa settimana
+  if (person_type === 'autista') {
+    const { data } = await sb.from('absences').select('*').order('date_from');
+    absences = data || [];
+    renderCal();
+  }
+  toast(`Assenza ${id?'aggiornata':'registrata'}`);
+}
+
+async function deleteAbsence(id) {
+  const a = absences.find(x => x.id === id);
+  safeDeleteModal('Elimina assenza',
+    `Stai per eliminare l'assenza di <strong>${a?.person_name}</strong>.`,
+    `()=>_deleteAbsence(${id})`);
+}
+async function _deleteAbsence(id) {
+  const { error } = await sb.from('absences').delete().eq('id', id);
+  if (error) { toast('Errore'); return; }
+  absences = absences.filter(x => x.id !== id);
+  renderAbsences();
+  renderCal();
+  toast('Assenza eliminata');
+}
+
 async function renderLog() {
   const { data } = await sb.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100);
   logs = data || [];
