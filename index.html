@@ -382,7 +382,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
         <div class="veh-tabs">
           <div class="veh-tab active" id="vtab-fleet"    onclick="switchVehTab('fleet')">🚛 Parco mezzi</div>
           <div class="veh-tab"        id="vtab-scad"     onclick="switchVehTab('scad')">📅 Scadenze</div>
-          <div class="veh-tab"        id="vtab-storia"   onclick="switchVehTab('storia')">🔧 Storico</div>
           <div class="veh-tab"        id="vtab-fermi"    onclick="switchVehTab('fermi')">🚫 Fermi</div>
         </div>
         <button class="btn primary" style="padding:5px 12px;font-size:12px" id="veh-add-btn" onclick="vehAddAction()">+ Aggiungi</button>
@@ -807,9 +806,8 @@ function renderCalOraria() {
       </div>
       <div style="display:flex;border-top:0.5px solid var(--border)">
         ${dayCols.map(c => {
-          const dateStr = fmt(d);
-          const isAbsent = c.id !== 'extra' && absences.some(a =>
-            a.driver_id === c.id && a.date_from <= dateStr && a.date_to >= dateStr);
+          const dateStr = dateStrings[di];
+          const isAbsent = c.id !== 'extra' && absenceMap[c.id]?.has(dateStr);
           const label = c.name.split(' ')[0] + (isAbsent ? ' 🏖️' : '');
           const style = `flex:1;color:${c.id==='extra'?'var(--text3)':isAbsent?'var(--text3)':c.color};${isAbsent?'text-decoration:line-through;':''}`;
           return `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="${style}" title="${isAbsent?c.name+' assente':''}">${label}</div>`;
@@ -818,6 +816,19 @@ function renderCalOraria() {
     </div>`;
   });
   html += '</div>';
+
+  // Precalcola date e assenze UNA SOLA VOLTA fuori dal loop
+  const dateStrings = dates.map(d => fmt(d));
+  // Mappa assenze: driver_id → Set di dateStr
+  const absenceMap = {};
+  absences.forEach(a => {
+    if (!a.driver_id) return;
+    if (!absenceMap[a.driver_id]) absenceMap[a.driver_id] = new Set();
+    const from = new Date(a.date_from), to = new Date(a.date_to);
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate()+1)) {
+      absenceMap[a.driver_id].add(fmt(new Date(d)));
+    }
+  });
 
   // BODY ROWS
   let lastFasciaId = null;
@@ -839,11 +850,10 @@ function renderCalOraria() {
     for (let di = 0; di < 6; di++) {
       const isSab = di === 5;
       const dayCols = isSab ? colsSab : colsFull;
+      const dateStr = dateStrings[di];
       html += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;display:flex;border-left:0.5px solid var(--border2)">`;
       dayCols.forEach(c => {
-        const dateStr = fmt(getWeekDates()[di]);
-        const isAbsent = c.id !== 'extra' && absences.some(a =>
-          a.driver_id === c.id && a.date_from <= dateStr && a.date_to >= dateStr);
+        const isAbsent = c.id !== 'extra' && absenceMap[c.id]?.has(dateStr);
         html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(0,0,0,.035);':''}"></div>`;
       });
       html += `</div>`;
@@ -1734,20 +1744,20 @@ async function _deleteDriver(id) {
 // ══════════════════════════════════════════════════════════
 function switchVehTab(tab) {
   currentVehTab = tab;
-  ['fleet','scad','storia','fermi'].forEach(t => {
-    document.getElementById('vtab-'+t).classList.toggle('active', t===tab);
+  ['fleet','scad','fermi'].forEach(t => {
+    const el = document.getElementById('vtab-'+t);
+    if (el) el.classList.toggle('active', t===tab);
   });
   const addBtn = document.getElementById('veh-add-btn');
-  const addLabels = { fleet:'+ Aggiungi veicolo', scad:'+ Nuova scadenza', storia:'+ Aggiungi intervento', fermi:'+ Registra fermo' };
+  const addLabels = { fleet:'+ Aggiungi veicolo', scad:'+ Nuova scadenza', fermi:'+ Registra fermo' };
   addBtn.textContent = addLabels[tab] || '+ Aggiungi';
   renderVehPanel();
 }
 
 function vehAddAction() {
-  if (currentVehTab === 'fleet')   openVehicleModal(null);
-  if (currentVehTab === 'scad')    openDeadlineModal(null, null);
-  if (currentVehTab === 'storia')  openHistoryModal(null, null);
-  if (currentVehTab === 'fermi')   openStopModal(null, null);
+  if (currentVehTab === 'fleet')  openVehicleModal(null);
+  if (currentVehTab === 'scad')   openDeadlineModal(null, null);
+  if (currentVehTab === 'fermi')  openStopModal(null, null);
 }
 
 async function renderVehPanel() {
@@ -1756,7 +1766,6 @@ async function renderVehPanel() {
   const body = document.getElementById('veh-body');
   if (currentVehTab === 'fleet')  renderFleet(body);
   if (currentVehTab === 'scad')   renderScadenze(body);
-  if (currentVehTab === 'storia') renderStoria(body);
   if (currentVehTab === 'fermi')  renderFermi(body);
 }
 
@@ -1806,7 +1815,6 @@ function renderFleet(body) {
           ${canEdit() ? `
           <button class="btn sm" onclick="openVehicleModal(${v.id})">✏️ Modifica</button>
           <button class="btn sm" onclick="openDeadlineModal(null,${v.id})">📅 + Scadenza</button>
-          <button class="btn sm" onclick="openHistoryModal(null,${v.id})">🔧 + Intervento</button>
           <button class="btn sm" onclick="openStopModal(null,${v.id})">🚫 + Fermo</button>
           <button class="btn sm" onclick="openKmModal(${v.id})">📍 Aggiorna KM</button>
           <button class="btn sm danger" onclick="deleteVehicle(${v.id})">🗑️ Elimina</button>
