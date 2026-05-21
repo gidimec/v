@@ -579,8 +579,10 @@ async function onLogin(user) {
   await loadAll();
   updateUIForRole();
   checkDeadlineNotifications();
-  // setTimeout garantisce che il browser abbia calcolato il layout prima di renderizzare
-  setTimeout(() => renderCal(), 50);
+  // Forza reflow: leggi offsetHeight per far calcolare al browser le dimensioni
+  const calWrap = document.getElementById('cal-wrap');
+  void calWrap.offsetHeight;
+  renderCal();
 }
 
 function updateUIForRole() {
@@ -774,96 +776,88 @@ function toggleCalMode() {
 
 function renderCalOraria() {
   const dates = getWeekDates();
-  document.getElementById('week-label').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
+  document.getElementById('week-label').textContent =
+    `${fmtDate(dates[0])} – ${fmtDate(dates[5])} ${dates[0].getFullYear()}`;
   const grid = document.getElementById('cal-grid');
 
-  // Fasce orarie con colori di sfondo
   const FASCIA_BG = [
-    { from: 0,               to: (12-START_H)*2,   label: 'Mattina',     bg: 'rgba(255,243,205,0.35)' },
-    { from: (12-START_H)*2,  to: (19-START_H)*2,   label: 'Pomeriggio',  bg: 'rgba(207,232,252,0.35)' },
-    { from: (19-START_H)*2,  to: SLOTS,            label: 'Sera',        bg: 'rgba(235,228,252,0.30)' },
+    { from: 0,              to: (12-START_H)*2,  label: 'Mattina',    bg: 'rgba(255,243,205,0.35)' },
+    { from: (12-START_H)*2, to: (19-START_H)*2,  label: 'Pomeriggio', bg: 'rgba(207,232,252,0.35)' },
+    { from: (19-START_H)*2, to: SLOTS,           label: 'Sera',       bg: 'rgba(235,228,252,0.30)' },
   ];
   function fasciaForSlotLocal(s) { return FASCIA_BG.find(f => s >= f.from && s < f.to) || FASCIA_BG[0]; }
 
-  // Sabato = solo colonna Extra; Lun-Ven = autisti + Extra
   const colsFull = [...drivers, { id: 'extra', name: 'Extra', color: '#888' }];
   const colsSab  = [{ id: 'extra', name: 'Extra', color: '#888' }];
-
-  // Wrapper con min-width per scrollabilità orizzontale
-  const nFull = colsFull.length;
-  const minW = 64 + 5 * nFull * 80 + 80; // 5 giorni pieni + sabato
-
-  let html = `<div style="min-width:${minW}px">`;
-
-  // HEADER
-  html += `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3">
-    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
-  dates.forEach((d, di) => {
-    const isSab = di === 5;
-    const dayCols = isSab ? colsSab : colsFull;
-    html += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2)">
-      <div class="cal-day-label${isToday(d)?' today':''}">
-        <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
-      </div>
-      <div style="display:flex;border-top:0.5px solid var(--border)">
-        ${dayCols.map(c => {
-          const dateStr = dateStrings[di];
-          const isAbsent = c.id !== 'extra' && absenceMap[c.id]?.has(dateStr);
-          const label = c.name.split(' ')[0] + (isAbsent ? ' 🏖️' : '');
-          const style = `flex:1;color:${c.id==='extra'?'var(--text3)':isAbsent?'var(--text3)':c.color};${isAbsent?'text-decoration:line-through;':''}`;
-          return `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}" style="${style}" title="${isAbsent?c.name+' assente':''}">${label}</div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  });
-  html += '</div>';
-
-  // Precalcola date e assenze UNA SOLA VOLTA fuori dal loop
+  const nFull    = colsFull.length;
+  const minW     = 64 + 5 * nFull * 80 + 80;
   const dateStrings = dates.map(d => fmt(d));
-  // Mappa assenze: driver_id → Set di dateStr
+
+  // Mappa assenze
   const absenceMap = {};
   absences.forEach(a => {
     if (!a.driver_id) return;
     if (!absenceMap[a.driver_id]) absenceMap[a.driver_id] = new Set();
     const from = new Date(a.date_from), to = new Date(a.date_to);
-    for (let d = new Date(from); d <= to; d.setDate(d.getDate()+1)) {
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate()+1))
       absenceMap[a.driver_id].add(fmt(new Date(d)));
-    }
   });
 
-  // BODY ROWS
-  let lastFasciaId = null;
+  // HEADER
+  let header = `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--bg);position:sticky;top:0;z-index:3;min-width:${minW}px">
+    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2)"></div>`;
+  dates.forEach((d, di) => {
+    const isSab = di === 5;
+    const dayCols = isSab ? colsSab : colsFull;
+    const dateStr = dateStrings[di];
+    header += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2)">
+      <div class="cal-day-label${isToday(d)?' today':''}">
+        <div class="dow">${DAYS[di]}</div><div class="dom">${d.getDate()}</div>
+      </div>
+      <div style="display:flex;border-top:0.5px solid var(--border)">
+        ${dayCols.map(c => {
+          const isAbsent = c.id !== 'extra' && absenceMap[c.id]?.has(dateStr);
+          const label = c.name.split(' ')[0] + (isAbsent ? ' 🏖️' : '');
+          const color = c.id==='extra' ? 'var(--text3)' : isAbsent ? 'var(--text3)' : c.color;
+          return `<div class="cal-drv-hcell${c.id==='extra'?' jolly':''}"
+            style="flex:1;color:${color};${isAbsent?'text-decoration:line-through;':''}"
+            title="${isAbsent?c.name+' assente':''}">${label}</div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  });
+  header += '</div>';
+
+  // Costruisci body in una sola stringa (è veloce, il bottleneck era innerHTML ripetuto)
+  let body = '';
+  let lastFascia = null;
   for (let s = 0; s < SLOTS; s++) {
     const isHour = s % 2 === 0;
     const fascia = fasciaForSlotLocal(s);
-    const isFirstOfFascia = fascia.label !== lastFasciaId;
-    if (isFirstOfFascia) lastFasciaId = fascia.label;
-
+    const isFirst = fascia.label !== lastFascia;
+    if (isFirst) lastFascia = fascia.label;
     const hourText = isHour ? slotToTime(s) : '';
-    const fasciaTag = isFirstOfFascia
+    const fasciaTag = isFirst
       ? `<span style="position:absolute;right:0;top:0;width:26px;height:${(fascia.to-fascia.from)*SLOT_H}px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--text3);pointer-events:none">${fascia.label.toUpperCase()}</span>`
       : '';
-
-    html += `<div style="display:flex;background:${fascia.bg}">
-      <div class="cal-time-cell${isHour?' hour':''}" style="width:64px;flex-shrink:0;border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'};background:${fascia.bg};position:relative;padding-right:28px">
-        ${hourText}${fasciaTag}
-      </div>`;
+    body += `<div style="display:flex;background:${fascia.bg};min-width:${minW}px">
+      <div class="cal-time-cell${isHour?' hour':''}" style="width:64px;flex-shrink:0;border-bottom:0.5px solid ${isHour?'var(--border2)':'var(--border)'};background:${fascia.bg};position:relative;padding-right:28px">${hourText}${fasciaTag}</div>`;
     for (let di = 0; di < 6; di++) {
       const isSab = di === 5;
       const dayCols = isSab ? colsSab : colsFull;
       const dateStr = dateStrings[di];
-      html += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;display:flex;border-left:0.5px solid var(--border2)">`;
+      body += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;display:flex;border-left:0.5px solid var(--border2)">`;
       dayCols.forEach(c => {
         const isAbsent = c.id !== 'extra' && absenceMap[c.id]?.has(dateStr);
-        html += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(0,0,0,.035);':''}"></div>`;
+        body += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(0,0,0,.035);':''}"></div>`;
       });
-      html += `</div>`;
+      body += `</div>`;
     }
-    html += `</div>`;
+    body += `</div>`;
   }
 
-  html += '</div>'; // close min-width wrapper
-  grid.innerHTML = html;
+  // Assegna tutto in una volta
+  grid.innerHTML = `<div style="min-width:${minW}px">${header}${body}</div>`;
   grid.onmousedown   = onGridMouseDown;
   grid.onmousemove   = onGridMouseMove;
   grid.oncontextmenu = onGridCtx;
