@@ -382,6 +382,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
         <div class="veh-tabs">
           <div class="veh-tab active" id="vtab-fleet"    onclick="switchVehTab('fleet')">🚛 Parco mezzi</div>
           <div class="veh-tab"        id="vtab-scad"     onclick="switchVehTab('scad')">📅 Scadenze</div>
+          <div class="veh-tab"        id="vtab-storia"   onclick="switchVehTab('storia')">🔧 Storico</div>
           <div class="veh-tab"        id="vtab-fermi"    onclick="switchVehTab('fermi')">🚫 Fermi</div>
         </div>
         <button class="btn primary" style="padding:5px 12px;font-size:12px" id="veh-add-btn" onclick="vehAddAction()">+ Aggiungi</button>
@@ -578,8 +579,8 @@ async function onLogin(user) {
   await loadAll();
   updateUIForRole();
   checkDeadlineNotifications();
-  // Aspetta che il DOM sia visibile prima di renderizzare la griglia
-  requestAnimationFrame(() => { requestAnimationFrame(() => { renderCal(); }); });
+  // setTimeout garantisce che il browser abbia calcolato il layout prima di renderizzare
+  setTimeout(() => renderCal(), 50);
 }
 
 function updateUIForRole() {
@@ -1744,20 +1745,21 @@ async function _deleteDriver(id) {
 // ══════════════════════════════════════════════════════════
 function switchVehTab(tab) {
   currentVehTab = tab;
-  ['fleet','scad','fermi'].forEach(t => {
+  ['fleet','scad','storia','fermi'].forEach(t => {
     const el = document.getElementById('vtab-'+t);
     if (el) el.classList.toggle('active', t===tab);
   });
   const addBtn = document.getElementById('veh-add-btn');
-  const addLabels = { fleet:'+ Aggiungi veicolo', scad:'+ Nuova scadenza', fermi:'+ Registra fermo' };
+  const addLabels = { fleet:'+ Aggiungi veicolo', scad:'+ Nuova scadenza', storia:'+ Aggiungi intervento', fermi:'+ Registra fermo' };
   addBtn.textContent = addLabels[tab] || '+ Aggiungi';
   renderVehPanel();
 }
 
 function vehAddAction() {
-  if (currentVehTab === 'fleet')  openVehicleModal(null);
-  if (currentVehTab === 'scad')   openDeadlineModal(null, null);
-  if (currentVehTab === 'fermi')  openStopModal(null, null);
+  if (currentVehTab === 'fleet')   openVehicleModal(null);
+  if (currentVehTab === 'scad')    openDeadlineModal(null, null);
+  if (currentVehTab === 'storia')  openHistoryModal(null, null);
+  if (currentVehTab === 'fermi')   openStopModal(null, null);
 }
 
 async function renderVehPanel() {
@@ -1766,6 +1768,7 @@ async function renderVehPanel() {
   const body = document.getElementById('veh-body');
   if (currentVehTab === 'fleet')  renderFleet(body);
   if (currentVehTab === 'scad')   renderScadenze(body);
+  if (currentVehTab === 'storia') renderStoria(body);
   if (currentVehTab === 'fermi')  renderFermi(body);
 }
 
@@ -1815,6 +1818,7 @@ function renderFleet(body) {
           ${canEdit() ? `
           <button class="btn sm" onclick="openVehicleModal(${v.id})">✏️ Modifica</button>
           <button class="btn sm" onclick="openDeadlineModal(null,${v.id})">📅 + Scadenza</button>
+          <button class="btn sm" onclick="openHistoryModal(null,${v.id})">🔧 + Intervento</button>
           <button class="btn sm" onclick="openStopModal(null,${v.id})">🚫 + Fermo</button>
           <button class="btn sm" onclick="openKmModal(${v.id})">📍 Aggiorna KM</button>
           <button class="btn sm danger" onclick="deleteVehicle(${v.id})">🗑️ Elimina</button>

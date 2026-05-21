@@ -249,6 +249,7 @@ let bookingRoles = [];
 let bookings     = [];
 let vehicleStops = [];
 let vehicleDeadlines = [];
+let vehicleHistory = [];
 let weekOffset   = 0;
 let calFilter    = 'all';
 let currentView  = 'cal';
@@ -322,7 +323,7 @@ async function doLoginPin() {
     .single();
   if (!person) { err.textContent = 'PIN non corretto'; return; }
   currentUser = { id: 'pin_'+(person.email||person.name), email: null, isPinUser: true };
-  const mappedRole = (person.role==='admin'||person.role==='operatore') ? 'gestore' : 'utente';
+  const mappedRole = person.role === 'admin' ? 'gestore' : 'utente';
   await onLoginPerson({ ...person, role: mappedRole });
 }
 
@@ -367,8 +368,8 @@ async function onLogin(user) {
     document.getElementById('ls-err').textContent = 'Non hai accesso alle prenotazioni. Contatta il responsabile.';
     await sb.auth.signOut(); return;
   }
-  // Mappa ruolo: admin/operatore → gestore, viewer con can_book → utente
-  const mappedRole = (rd.role === 'admin' || rd.role === 'operatore') ? 'gestore' : 'utente';
+  // Solo admin → gestore (vede tutti), operatore/viewer → utente (vede solo sé)
+  const mappedRole = rd.role === 'admin' ? 'gestore' : 'utente';
   await onLoginPerson({ ...rd, role: mappedRole });
 }
 
@@ -390,18 +391,20 @@ function weekRange() {
 
 async function loadAll() {
   const { from, to } = weekRange();
-  const [{ data: v },{ data: br },{ data: bk },{ data: vs },{ data: vd }] = await Promise.all([
+  const [{ data: v },{ data: br },{ data: bk },{ data: vs },{ data: vd },{ data: vh }] = await Promise.all([
     sb.from('vehicles').select('*').eq('active',true).eq('bookable',true).order('name'),
     sb.from('user_roles').select('*').eq('can_book',true).order('name'),
     sb.from('vehicle_bookings').select('*').gte('date',from).lte('date',to).neq('status','cancelled'),
     sb.from('vehicle_stops').select('*'),
     sb.from('vehicle_deadlines').select('*').eq('completed',false),
+    sb.from('vehicle_history').select('id,vehicle_id,date,type').order('date',{ascending:false}),
   ]);
   vehicles         = v  || [];
   bookingRoles     = br || [];
   bookings         = bk || [];
   vehicleStops     = vs || [];
   vehicleDeadlines = vd || [];
+  vehicleHistory   = vh || [];
   const sel = document.getElementById('list-filter-veh');
   if (sel) sel.innerHTML = '<option value="">Tutti i mezzi</option>' +
     vehicles.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
@@ -422,14 +425,21 @@ function fmt(d)     { return d.toISOString().split('T')[0]; }
 function fmtDisp(d) { return d.getDate()+'/'+(d.getMonth()+1); }
 function isoDisp(s) { const [y,m,g]=s.split('-'); return g+'/'+m+'/'+y; }
 function isVehicleBlocked(vehicleId, dateStr) {
-  // Controlla fermi
+  // Controlla fermi manuali
   const stop = vehicleStops.find(s =>
     s.vehicle_id === vehicleId && s.start_date <= dateStr && s.end_date >= dateStr);
   if (stop) return { blocked: true, reason: stop.reason, from: stop.start_date, to: stop.end_date, type: 'fermo' };
-  // Controlla scadenze (revisioni, tagliandi ecc.) — il giorno esatto della scadenza il mezzo non è disponibile
+
+  // Controlla scadenze (revisioni, tagliandi ecc.)
   const dl = vehicleDeadlines.find(d =>
     d.vehicle_id === vehicleId && d.deadline_date === dateStr);
   if (dl) return { blocked: true, reason: dl.type, from: dateStr, to: dateStr, type: 'scadenza' };
+
+  // Controlla interventi programmati (vehicle_history con data futura o odierna)
+  const hist = vehicleHistory.find(h =>
+    h.vehicle_id === vehicleId && h.date === dateStr);
+  if (hist) return { blocked: true, reason: `Intervento: ${hist.type}`, from: dateStr, to: dateStr, type: 'intervento' };
+
   return null;
 }
 
