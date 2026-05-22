@@ -752,6 +752,7 @@ function getWeekDates() {
   return Array.from({ length: 6 }, (_, i) => { const d = new Date(now); d.setDate(now.getDate() + i); return d; });
 }
 function fmtDate(d) { return d.getDate() + '/' + (d.getMonth() + 1); }
+function fmt(d)     { return d.toISOString().split('T')[0]; } // YYYY-MM-DD
 function isToday(d) { const t = new Date(); return d.toDateString() === t.toDateString(); }
 function slotToTime(s) { const h = START_H + Math.floor(s / 2); const m = s % 2 === 0 ? '00' : '30'; return `${h}:${m}`; }
 async function prevWeek() { weekOffset--; await loadTrips(); renderCal(); }
