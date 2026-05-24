@@ -9,7 +9,6 @@
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <style>
@@ -587,14 +586,14 @@ async function onLogin(user) {
 
 function updateUIForRole() {
   const icons = document.querySelectorAll('.sb-icon');
-  if (icons[1]) icons[1].style.display = canEdit()  ? 'flex' : 'none';
-  if (icons[2]) icons[2].style.display = canEdit()  ? 'flex' : 'none';
-  if (icons[3]) icons[3].style.display = canEdit()  ? 'flex' : 'none';
-  if (icons[4]) icons[4].style.display = isAdmin()  ? 'flex' : 'none';
-  if (icons[5]) icons[5].style.display = isAdmin()  ? 'flex' : 'none';
-  if (canEdit()) {
-    document.getElementById('notif-btn').style.display = 'flex';
-  }
+  // cal(0), addr(1), drv(2), veh(3), abs(4), usr(5), log(6)
+  if (icons[1]) icons[1].style.display = canEdit() ? 'flex' : 'none'; // destinazioni
+  if (icons[2]) icons[2].style.display = canEdit() ? 'flex' : 'none'; // autisti
+  if (icons[3]) icons[3].style.display = canEdit() ? 'flex' : 'none'; // veicoli
+  if (icons[4]) icons[4].style.display = canEdit() ? 'flex' : 'none'; // assenze
+  if (icons[5]) icons[5].style.display = isAdmin() ? 'flex' : 'none'; // utenti
+  if (icons[6]) icons[6].style.display = isAdmin() ? 'flex' : 'none'; // log
+  if (canEdit()) document.getElementById('notif-btn').style.display = 'flex';
 }
 
 function handleUserBtn() { showProfileModal(); }
@@ -857,8 +856,27 @@ function renderCalOraria() {
     body += `</div>`;
   }
 
-  // Assegna tutto in una volta
-  grid.innerHTML = `<div style="min-width:${minW}px">${header}${body}</div>`;
+  // HEADER - aggiungi riga staff assenze
+  let staffRow = `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--yellow-bg);min-width:${minW}px">
+    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2);font-size:9px;font-weight:700;color:var(--yellow-dark);display:flex;align-items:center;justify-content:flex-end;padding-right:6px">STAFF</div>`;
+  dates.forEach((d, di) => {
+    const isSab = di === 5;
+    const dateStr = dateStrings[di];
+    const staffAbsent = absences.filter(a =>
+      a.person_type === 'staff' && a.date_from <= dateStr && a.date_to >= dateStr);
+    staffRow += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2);padding:2px 4px;font-size:9px;color:var(--yellow-dark);font-weight:500">`;
+    if (staffAbsent.length > 0) {
+      staffRow += staffAbsent.map(a =>
+        `<span style="display:inline-block;background:var(--yellow-bg);border:0.5px solid var(--yellow);border-radius:10px;padding:1px 5px;margin:1px;white-space:nowrap">🏖️ ${a.person_name.split(' ')[0]}</span>`
+      ).join('');
+    } else {
+      staffRow += `<span style="color:var(--text3);font-size:9px">—</span>`;
+    }
+    staffRow += `</div>`;
+  });
+  staffRow += '</div>';
+
+  grid.innerHTML = `<div style="min-width:${minW}px">${header}${staffRow}${body}</div>`;
   grid.onmousedown   = onGridMouseDown;
   grid.onmousemove   = onGridMouseMove;
   grid.oncontextmenu = onGridCtx;
@@ -2575,22 +2593,33 @@ async function saveUser(existingEmail, existingName) {
 
   if (!name) { toast('Inserisci il nome'); return; }
   if (pin && pin.length !== 5) { toast('Il PIN deve essere di 5 cifre'); return; }
-  if (!email && !pin) { toast('Inserisci almeno email o PIN'); return; }
+  if (!email && !pin) { toast('Inserisci email o PIN — almeno uno è obbligatorio'); return; }
+  if (!email && !existingEmail && !existingName) {
+    // Utente solo PIN: verifica che non esista già con stesso nome
+  }
 
   const payload = { name, department: dept, role, can_book, pin };
 
   if (existingEmail || existingName) {
-    // Aggiorna esistente
     let query = sb.from('user_roles').update(payload);
     if (existingEmail) query = query.eq('email', existingEmail);
     else query = query.eq('name', existingName);
     const { error } = await query;
-    if (error) { toast('Errore aggiornamento: '+error.message); return; }
+    if (error) { toast('Errore: '+error.message); return; }
     toast('Utente aggiornato');
   } else {
-    // Nuovo utente
-    const { error } = await sb.from('user_roles').insert({ ...payload, email });
-    if (error) { toast('Errore: '+error.message); return; }
+    // email può essere null per utenti solo PIN
+    const insertPayload = { ...payload };
+    if (email) insertPayload.email = email;
+    const { error } = await sb.from('user_roles').insert(insertPayload);
+    if (error) {
+      if (error.message.includes('null value') || error.message.includes('not-null')) {
+        toast('Esegui prima il SQL per rendere email opzionale (vedi istruzioni)');
+      } else {
+        toast('Errore: '+error.message);
+      }
+      return;
+    }
     toast('Utente aggiunto');
   }
   closeModal(); renderUsers();

@@ -4,12 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Prenota un Mezzo</title>
-
 <script>
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -376,13 +374,21 @@ async function onLogin(user) {
 }
 
 function startAutoRefresh() {
-  // Aggiorna prenotazioni ogni 60 secondi
+  // Aggiorna ogni 60 secondi
   setInterval(async () => {
     await loadBookings();
-    if (currentView==='cal') renderCal();
+    if (currentView==='cal')      renderCal();
+    if (currentView==='list')     renderList();
+    if (currentView==='vehicles') renderVehicles();
   }, 60000);
+  // Aggiorna subito quando si torna sulla tab
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState==='visible') { await loadBookings(); if(currentView==='cal') renderCal(); }
+    if (document.visibilityState==='visible') {
+      await loadBookings();
+      if (currentView==='cal')      renderCal();
+      if (currentView==='list')     renderList();
+      if (currentView==='vehicles') renderVehicles();
+    }
   });
 }
 
