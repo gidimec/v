@@ -857,24 +857,36 @@ function renderCalOraria() {
     body += `</div>`;
   }
 
-  // HEADER - aggiungi riga staff assenze
-  let staffRow = `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--yellow-bg);min-width:${minW}px">
-    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2);font-size:9px;font-weight:700;color:var(--yellow-dark);display:flex;align-items:center;justify-content:flex-end;padding-right:6px">STAFF</div>`;
+  // RIGA STAFF — stessa struttura dell'header (giorno → sottocolonne)
+  let staffRow = `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--yellow-bg);min-width:${minW}px;position:sticky;top:0;z-index:3">
+    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2);font-size:9px;font-weight:700;color:var(--yellow-dark);display:flex;align-items:center;justify-content:flex-end;padding-right:6px;padding-top:2px;padding-bottom:2px">STAFF</div>`;
   dates.forEach((d, di) => {
     const isSab = di === 5;
-    const nCols = isSab ? colsSab.length : colsFull.length;
+    const dayCols = isSab ? colsSab : colsFull;
     const dateStr = dateStrings[di];
     const staffAbsent = absences.filter(a =>
       a.person_type === 'staff' && a.date_from <= dateStr && a.date_to >= dateStr);
-    staffRow += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2);padding:2px 4px;font-size:9px;color:var(--yellow-dark);font-weight:500;display:flex;flex-wrap:wrap;align-items:center;gap:2px">`;
-    if (staffAbsent.length > 0) {
-      staffRow += staffAbsent.map(a =>
-        `<span style="background:rgba(186,117,23,.15);border:0.5px solid var(--yellow);border-radius:10px;padding:1px 6px;white-space:nowrap">🏖️ ${a.person_name.split(' ')[0]}</span>`
-      ).join('');
-    } else {
-      staffRow += `<span style="color:var(--text3)">—</span>`;
-    }
-    staffRow += `</div>`;
+    // Stessa struttura dell'header: div giorno → div sottocolonne
+    staffRow += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2)">
+      <div style="display:flex;height:100%">`;
+    dayCols.forEach((c, ci) => {
+      const isLast = ci === dayCols.length - 1;
+      // Solo nella prima sottocolonna mostra il contenuto, le altre vuote
+      if (ci === 0) {
+        staffRow += `<div style="flex:1;padding:2px 4px;font-size:9px;display:flex;flex-wrap:wrap;align-items:center;gap:2px;${isLast?'':'border-right:0.5px solid var(--border)'}">`;
+        if (staffAbsent.length > 0) {
+          staffRow += staffAbsent.map(a =>
+            `<span style="background:rgba(186,117,23,.15);border:0.5px solid var(--yellow);border-radius:10px;padding:1px 6px;white-space:nowrap;color:var(--yellow-dark);font-weight:500">🏖️ ${a.person_name.split(' ')[0]}</span>`
+          ).join('');
+        } else {
+          staffRow += `<span style="color:var(--text3)">—</span>`;
+        }
+        staffRow += `</div>`;
+      } else {
+        staffRow += `<div style="flex:1;${isLast?'':'border-right:0.5px solid var(--border)'}"></div>`;
+      }
+    });
+    staffRow += `</div></div>`;
   });
   staffRow += '</div>';
 
