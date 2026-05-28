@@ -4,10 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Prenota un Mezzo</title>
+
 <script>
   const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
 </script>
+
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -308,6 +311,44 @@ async function loadPinNames() {
     data.map(p => `<option value="${encodeURIComponent(p.email||p.name)}">${p.name}</option>`).join('');
 }
 
+// ══════════════════════════════════════════════════
+//  SISTEMA BLOCCO TENTATIVI
+// ══════════════════════════════════════════════════
+const MAX_ATTEMPTS = 3;
+const LOCK_MINUTES = 5;
+
+async function checkLoginLock(identifier) {
+  const { data } = await sb.from('login_attempts').select('*').eq('identifier', identifier).single();
+  if (!data) return null;
+  if (data.locked_until) {
+    const lockEnd = new Date(data.locked_until);
+    if (lockEnd > new Date()) {
+      const mins = Math.ceil((lockEnd - new Date()) / 60000);
+      return { locked: true, mins };
+    }
+  }
+  return { locked: false, attempts: data.attempts };
+}
+
+async function recordFailedAttempt(identifier) {
+  const { data: existing } = await sb.from('login_attempts').select('*').eq('identifier', identifier).single();
+  const now = new Date().toISOString();
+  if (existing) {
+    const newAttempts = (existing.attempts || 0) + 1;
+    const lockedUntil = newAttempts >= MAX_ATTEMPTS
+      ? new Date(Date.now() + LOCK_MINUTES * 60000).toISOString() : null;
+    await sb.from('login_attempts').update({ attempts: newAttempts, locked_until: lockedUntil, last_attempt: now }).eq('identifier', identifier);
+    return newAttempts;
+  } else {
+    await sb.from('login_attempts').insert({ identifier, attempts: 1, last_attempt: now });
+    return 1;
+  }
+}
+
+async function clearLoginAttempts(identifier) {
+  await sb.from('login_attempts').update({ attempts: 0, locked_until: null }).eq('identifier', identifier);
+}
+
 async function doLoginPin() {
   const personKey = document.getElementById('ls-pin-name').value;
   const pin       = document.getElementById('ls-pin').value.trim();
@@ -316,15 +357,52 @@ async function doLoginPin() {
   if (!personKey) { err.textContent = 'Seleziona il tuo nome'; return; }
   if (!pin || pin.length !== 5) { err.textContent = 'Inserisci il PIN a 5 cifre'; return; }
   const decoded = decodeURIComponent(personKey);
-  // Cerca per email o per nome
+  const lockId  = 'pin:'+decoded;
+  const lockStatus = await checkLoginLock(lockId);
+  if (lockStatus?.locked) {
+    err.textContent = `Account bloccato. Riprova tra ${lockStatus.mins} minuti o contatta l'amministratore.`;
+    return;
+  }
   const { data: person } = await sb.from('user_roles').select('*')
     .eq('pin', pin).eq('can_book', true)
     .or(`email.eq.${decoded},name.eq.${decoded}`)
     .single();
-  if (!person) { err.textContent = 'PIN non corretto'; return; }
+  if (!person) {
+    const attempts = await recordFailedAttempt(lockId);
+    const remaining = MAX_ATTEMPTS - attempts;
+    err.textContent = remaining <= 0
+      ? `Account bloccato per ${LOCK_MINUTES} minuti. Contatta l'amministratore.`
+      : `PIN non corretto. Tentativi rimasti: ${remaining}`;
+    return;
+  }
+  await clearLoginAttempts(lockId);
   currentUser = { id: 'pin_'+(person.email||person.name), email: null, isPinUser: true };
   const mappedRole = person.role === 'admin' ? 'gestore' : 'utente';
   await onLoginPerson({ ...person, role: mappedRole });
+}
+
+async function doLogin() {
+  const email = document.getElementById('ls-email').value.trim();
+  const pass  = document.getElementById('ls-pass').value;
+  const err   = document.getElementById('ls-err');
+  err.textContent = '';
+  if (!email || !pass) { err.textContent = 'Inserisci email e password'; return; }
+  const lockStatus = await checkLoginLock(email);
+  if (lockStatus?.locked) {
+    err.textContent = `Account bloccato. Riprova tra ${lockStatus.mins} minuti o contatta l'amministratore.`;
+    return;
+  }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) {
+    const attempts = await recordFailedAttempt(email);
+    const remaining = MAX_ATTEMPTS - attempts;
+    err.textContent = remaining <= 0
+      ? `Account bloccato per ${LOCK_MINUTES} minuti. Contatta l'amministratore.`
+      : `Password errata. Tentativi rimasti: ${remaining}`;
+    return;
+  }
+  await clearLoginAttempts(email);
+  await onLogin(data.user);
 }
 
 async function onLoginPerson(person) {
@@ -346,16 +424,7 @@ async function onLoginPerson(person) {
   startAutoRefresh();
 }
 
-async function doLogin() {
-  const email = document.getElementById('ls-email').value.trim();
-  const pass  = document.getElementById('ls-pass').value;
-  const err   = document.getElementById('ls-err');
-  err.textContent = '';
-  if (!email || !pass) { err.textContent = 'Inserisci email e password'; return; }
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if (error) { err.textContent = 'Email o password errati'; return; }
-  await onLogin(data.user);
-}
+
 
 async function onLogin(user) {
   currentUser = user;
@@ -475,7 +544,9 @@ function setFilter(f) {
   calFilter = f;
   document.getElementById('tab-all').classList.toggle('active', f==='all');
   document.getElementById('tab-mine').classList.toggle('active', f==='mine');
-  renderCal();
+  // Il filtro NON tocca il calendario — quello mostra sempre tutto
+  // Aggiorna solo se siamo nella lista
+  if (currentView === 'list') renderList();
 }
 
 function renderCal() {
@@ -501,11 +572,8 @@ function renderCal() {
         </div></td>`;
         return;
       }
+      // Mostra SEMPRE tutte le prenotazioni nel calendario — filtro 'mine' solo nella lista
       let dayBk = bookings.filter(b => b.vehicle_id===v.id && b.date===dateStr);
-      if (calFilter==='mine') {
-        const me = myProfile();
-        if (me) dayBk = dayBk.filter(b => b.booker_email===me.email);
-      }
       html += '<td><div class="cell-inner">';
       if (dayBk.length > 0) {
         dayBk.forEach(bk => {
@@ -514,7 +582,6 @@ function renderCal() {
             '<div class="bk-name">'+(bk.booker_name||'?')+'</div>' +
             '<div class="bk-dest">'+(bk.destination||'&mdash;')+'</div>' +
             '<div class="bk-slot">'+SLOT_LABEL[bk.time_slot]+'</div>' +
-            '</div>';
             '</div>';
         });
         if (canBook() && hasAvailableSlot(v.id, dateStr, dayBk)) {

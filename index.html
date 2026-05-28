@@ -470,14 +470,80 @@ function isAdmin() { return currentUser && currentUser.role === 'admin'; }
 // ══════════════════════════════════════════════════════════
 //  LOGIN
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+//  SISTEMA BLOCCO TENTATIVI
+// ══════════════════════════════════════════════════════════
+const MAX_ATTEMPTS = 3;
+const LOCK_MINUTES = 5;
+
+async function checkLoginLock(identifier) {
+  const { data } = await sb.from('login_attempts').select('*').eq('identifier', identifier).single();
+  if (!data) return null;
+  if (data.locked_until) {
+    const lockEnd = new Date(data.locked_until);
+    if (lockEnd > new Date()) {
+      const mins = Math.ceil((lockEnd - new Date()) / 60000);
+      return { locked: true, mins, id: data.id };
+    }
+  }
+  return { locked: false, attempts: data.attempts, id: data.id };
+}
+
+async function recordFailedAttempt(identifier) {
+  const { data: existing } = await sb.from('login_attempts').select('*').eq('identifier', identifier).single();
+  const now = new Date().toISOString();
+  if (existing) {
+    const newAttempts = (existing.attempts || 0) + 1;
+    const lockedUntil = newAttempts >= MAX_ATTEMPTS
+      ? new Date(Date.now() + LOCK_MINUTES * 60000).toISOString()
+      : null;
+    await sb.from('login_attempts').update({
+      attempts: newAttempts,
+      locked_until: lockedUntil,
+      last_attempt: now
+    }).eq('identifier', identifier);
+    return newAttempts;
+  } else {
+    await sb.from('login_attempts').insert({
+      identifier, attempts: 1, last_attempt: now
+    });
+    return 1;
+  }
+}
+
+async function clearLoginAttempts(identifier) {
+  await sb.from('login_attempts').update({
+    attempts: 0, locked_until: null
+  }).eq('identifier', identifier);
+}
+
 async function doLoginScreen() {
   const email = document.getElementById('ls-email').value.trim();
   const pass  = document.getElementById('ls-pass').value;
   const errEl = document.getElementById('ls-err');
   errEl.textContent = '';
   if (!email || !pass) { errEl.textContent = 'Inserisci email e password'; return; }
+
+  // Controlla blocco
+  const lockStatus = await checkLoginLock(email);
+  if (lockStatus?.locked) {
+    errEl.textContent = `Account bloccato. Riprova tra ${lockStatus.mins} minuti o contatta l'amministratore.`;
+    return;
+  }
+
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if (error) { errEl.textContent = 'Email o password errati'; return; }
+  if (error) {
+    const attempts = await recordFailedAttempt(email);
+    const remaining = MAX_ATTEMPTS - attempts;
+    if (remaining <= 0) {
+      errEl.textContent = `Account bloccato per ${LOCK_MINUTES} minuti dopo ${MAX_ATTEMPTS} tentativi falliti.`;
+    } else {
+      errEl.textContent = `Email o password errati. Tentativi rimasti: ${remaining}`;
+    }
+    return;
+  }
+  // Login ok: azzera tentativi
+  await clearLoginAttempts(email);
   await onLogin(data.user);
 }
 function showLoginScreen() { document.getElementById('login-screen').style.display='flex'; document.getElementById('main-app').style.display='none'; }
@@ -857,36 +923,23 @@ function renderCalOraria() {
     body += `</div>`;
   }
 
-  // RIGA STAFF — stessa struttura dell'header (giorno → sottocolonne)
-  let staffRow = `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--yellow-bg);min-width:${minW}px;position:sticky;top:0;z-index:3">
-    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2);font-size:9px;font-weight:700;color:var(--yellow-dark);display:flex;align-items:center;justify-content:flex-end;padding-right:6px;padding-top:2px;padding-bottom:2px">STAFF</div>`;
+  // RIGA STAFF — una cella per giorno, larghezza identica al gruppo giorno nell'header
+  let staffRow = `<div style="display:flex;border-bottom:0.5px solid var(--border2);background:var(--yellow-bg);min-width:${minW}px">
+    <div style="width:64px;flex-shrink:0;border-right:0.5px solid var(--border2);font-size:9px;font-weight:700;color:var(--yellow-dark);display:flex;align-items:center;justify-content:flex-end;padding-right:6px">STAFF</div>`;
   dates.forEach((d, di) => {
     const isSab = di === 5;
-    const dayCols = isSab ? colsSab : colsFull;
     const dateStr = dateStrings[di];
     const staffAbsent = absences.filter(a =>
       a.person_type === 'staff' && a.date_from <= dateStr && a.date_to >= dateStr);
-    // Stessa struttura dell'header: div giorno → div sottocolonne
-    staffRow += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2)">
-      <div style="display:flex;height:100%">`;
-    dayCols.forEach((c, ci) => {
-      const isLast = ci === dayCols.length - 1;
-      // Solo nella prima sottocolonna mostra il contenuto, le altre vuote
-      if (ci === 0) {
-        staffRow += `<div style="flex:1;padding:2px 4px;font-size:9px;display:flex;flex-wrap:wrap;align-items:center;gap:2px;${isLast?'':'border-right:0.5px solid var(--border)'}">`;
-        if (staffAbsent.length > 0) {
-          staffRow += staffAbsent.map(a =>
-            `<span style="background:rgba(186,117,23,.15);border:0.5px solid var(--yellow);border-radius:10px;padding:1px 6px;white-space:nowrap;color:var(--yellow-dark);font-weight:500">🏖️ ${a.person_name.split(' ')[0]}</span>`
-          ).join('');
-        } else {
-          staffRow += `<span style="color:var(--text3)">—</span>`;
-        }
-        staffRow += `</div>`;
-      } else {
-        staffRow += `<div style="flex:1;${isLast?'':'border-right:0.5px solid var(--border)'}"></div>`;
-      }
-    });
-    staffRow += `</div></div>`;
+    staffRow += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;border-left:0.5px solid var(--border2);padding:2px 4px;display:flex;flex-wrap:wrap;align-items:center;gap:2px">`;
+    if (staffAbsent.length > 0) {
+      staffRow += staffAbsent.map(a =>
+        `<span style="background:rgba(186,117,23,.15);border:0.5px solid var(--yellow);border-radius:10px;padding:1px 6px;white-space:nowrap;color:var(--yellow-dark);font-size:9px;font-weight:500">🏖️ ${a.person_name.split(' ')[0]}</span>`
+      ).join('');
+    } else {
+      staffRow += `<span style="color:var(--text3);font-size:9px">—</span>`;
+    }
+    staffRow += `</div>`;
   });
   staffRow += '</div>';
 
@@ -2534,21 +2587,48 @@ async function renderUsers() {
   document.getElementById('usr-list').innerHTML = '<div style="color:var(--text3);font-size:12px">Caricamento…</div>';
   const { data } = await sb.from('user_roles').select('*').order('name');
   usersList = data || [];
+
+  // Carica stati di blocco
+  const { data: lockData } = await sb.from('login_attempts').select('*');
+  const lockMap = {};
+  (lockData||[]).forEach(l => { lockMap[l.identifier] = l; });
+
   const roleLabel = { admin:'Amministratore', operatore:'Operatore', viewer:'Visualizzatore' };
   const roleClass = { admin:'role-admin', operatore:'role-operatore', viewer:'role-viewer' };
-  document.getElementById('usr-list').innerHTML = usersList.map(u => `
-    <div class="panel-row">
+  const now = new Date();
+
+  document.getElementById('usr-list').innerHTML = usersList.map(u => {
+    const lock = lockMap[u.email] || lockMap['pin:'+u.name];
+    const isLocked = lock?.locked_until && new Date(lock.locked_until) > now;
+    const mins = isLocked ? Math.ceil((new Date(lock.locked_until) - now) / 60000) : 0;
+    return `<div class="panel-row">
       <div style="flex:1">
-        <div style="font-weight:500">${u.name}${u.department?` <span style="font-size:10px;color:var(--text2);font-weight:400">· ${u.department}</span>`:''}</div>
+        <div style="font-weight:500">${u.name}${u.department?` <span style="font-size:10px;color:var(--text2);font-weight:400">· ${u.department}</span>`:''}
+          ${isLocked?`<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:6px">🔒 Bloccato ${mins}min</span>`:''}
+        </div>
         <div style="font-size:11px;color:var(--text2)">${u.email||'Solo PIN'}
           ${u.pin?` <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:var(--blue-bg);color:var(--blue-dark)">🔢 PIN</span>`:''}
           ${u.can_book?` <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green-dark)">🚗 Prenota</span>`:''}
         </div>
       </div>
       <span class="role-badge ${roleClass[u.role]||'role-viewer'}" style="margin-right:8px">${roleLabel[u.role]||u.role}</span>
+      ${isLocked?`<button class="btn success" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="unlockUser('${u.email||''}','${u.name}')">🔓 Sblocca</button>`:''}
       <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openUserModal('${u.email||''}','${u.name}')">✏️</span>
       <span class="tag" style="cursor:pointer;background:var(--red-bg);color:var(--red)" onclick="confirmDeleteUser('${u.email||''}','${u.name}')">🗑️</span>
-    </div>`).join('') || '<div style="color:var(--text3);font-size:12px">Nessun utente</div>';
+    </div>`;
+  }).join('') || '<div style="color:var(--text3);font-size:12px">Nessun utente</div>';
+}
+
+async function unlockUser(email, name) {
+  // Sblocca sia per email che per PIN
+  const identifiers = [];
+  if (email) identifiers.push(email);
+  identifiers.push('pin:'+name);
+  await Promise.all(identifiers.map(id =>
+    sb.from('login_attempts').update({ attempts: 0, locked_until: null }).eq('identifier', id)
+  ));
+  toast(`🔓 ${name} sbloccato`);
+  renderUsers();
 }
 
 function openUserModal(email, nameHint) {
