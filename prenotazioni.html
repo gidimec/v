@@ -300,15 +300,18 @@ function switchLoginTab(tab) {
 }
 
 async function loadPinNames() {
-  const { data, error } = await sb.from('user_roles').select('email,name,pin').eq('can_book',true).not('pin','is',null);
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/pin-names`, {
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' }
+  });
+  const json = await res.json();
   const sel = document.getElementById('ls-pin-name');
   if (!sel) return;
-  if (error || !data || data.length === 0) {
+  if (!json.users || json.users.length === 0) {
     sel.innerHTML = '<option value="">Nessun utente con PIN configurato</option>';
     return;
   }
   sel.innerHTML = '<option value="">-- Seleziona il tuo nome --</option>' +
-    data.map(p => `<option value="${encodeURIComponent(p.email||p.name)}">${p.name}</option>`).join('');
+    json.users.map(p => `<option value="${encodeURIComponent(p.email||p.name)}">${p.name}</option>`).join('');
 }
 
 // ══════════════════════════════════════════════════
@@ -317,38 +320,6 @@ async function loadPinNames() {
 const MAX_ATTEMPTS = 3;
 const LOCK_MINUTES = 5;
 
-async function checkLoginLock(identifier) {
-  const { data } = await sb.from('login_attempts').select('*').eq('identifier', identifier).single();
-  if (!data) return null;
-  if (data.locked_until) {
-    const lockEnd = new Date(data.locked_until);
-    if (lockEnd > new Date()) {
-      const mins = Math.ceil((lockEnd - new Date()) / 60000);
-      return { locked: true, mins };
-    }
-  }
-  return { locked: false, attempts: data.attempts };
-}
-
-async function recordFailedAttempt(identifier) {
-  const { data: existing } = await sb.from('login_attempts').select('*').eq('identifier', identifier).single();
-  const now = new Date().toISOString();
-  if (existing) {
-    const newAttempts = (existing.attempts || 0) + 1;
-    const lockedUntil = newAttempts >= MAX_ATTEMPTS
-      ? new Date(Date.now() + LOCK_MINUTES * 60000).toISOString() : null;
-    await sb.from('login_attempts').update({ attempts: newAttempts, locked_until: lockedUntil, last_attempt: now }).eq('identifier', identifier);
-    return newAttempts;
-  } else {
-    await sb.from('login_attempts').insert({ identifier, attempts: 1, last_attempt: now });
-    return 1;
-  }
-}
-
-async function clearLoginAttempts(identifier) {
-  await sb.from('login_attempts').update({ attempts: 0, locked_until: null }).eq('identifier', identifier);
-}
-
 async function doLoginPin() {
   const personKey = document.getElementById('ls-pin-name').value;
   const pin       = document.getElementById('ls-pin').value.trim();
@@ -356,30 +327,27 @@ async function doLoginPin() {
   err.textContent = '';
   if (!personKey) { err.textContent = 'Seleziona il tuo nome'; return; }
   if (!pin || pin.length !== 5) { err.textContent = 'Inserisci il PIN a 5 cifre'; return; }
+
   const decoded = decodeURIComponent(personKey);
-  const lockId  = 'pin:'+decoded;
-  const lockStatus = await checkLoginLock(lockId);
-  if (lockStatus?.locked) {
-    err.textContent = `Account bloccato. Riprova tra ${lockStatus.mins} minuti o contatta l'amministratore.`;
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/pin-login`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nome: decoded, pin })
+  });
+  const json = await res.json();
+
+  if (!res.ok || !json.ok) {
+    err.textContent = json.error || 'PIN non corretto';
     return;
   }
-  const { data: person } = await sb.from('user_roles').select('*')
-    .eq('pin', pin).eq('can_book', true)
-    .or(`email.eq.${decoded},name.eq.${decoded}`)
-    .single();
-  if (!person) {
-    const attempts = await recordFailedAttempt(lockId);
-    const remaining = MAX_ATTEMPTS - attempts;
-    err.textContent = remaining <= 0
-      ? `Account bloccato per ${LOCK_MINUTES} minuti. Contatta l'amministratore.`
-      : `PIN non corretto. Tentativi rimasti: ${remaining}`;
-    return;
-  }
-  await clearLoginAttempts(lockId);
+
+  const person = json.user;
   currentUser = { id: 'pin_'+(person.email||person.name), email: null, isPinUser: true };
   const mappedRole = person.role === 'admin' ? 'gestore' : 'utente';
   await onLoginPerson({ ...person, role: mappedRole });
 }
+
 
 async function doLogin() {
   const email = document.getElementById('ls-email').value.trim();
