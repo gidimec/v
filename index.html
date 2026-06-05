@@ -916,7 +916,7 @@ function renderCalOraria() {
       body += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;display:flex;border-left:0.5px solid var(--border2)">`;
       dayCols.forEach(c => {
         const isAbsent = c.id !== 'extra' && absenceMap[c.id]?.has(dateStr);
-        body += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(0,0,0,.035);':''}"></div>`;
+        body += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(220,50,50,.08);':''}"></div>`;
       });
       body += `</div>`;
     }
@@ -2794,7 +2794,8 @@ async function doChangePassword(targetEmail) {
   btn.disabled = false;
   if (!res.ok || !json.ok) { err.textContent = json.error || 'Errore'; return; }
   closeModal();
-  toast('Password cambiata con successo');
+  sb.from('activity_log').insert({ username: currentUser.name, action: `Cambio password per ${targetEmail}` });
+toast('Password cambiata con successo');
 }
 
 function closeModal() { document.getElementById('modal-area').innerHTML = ''; }
