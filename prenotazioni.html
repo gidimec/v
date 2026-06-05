@@ -766,28 +766,52 @@ async function showBookingDetail(id) {
     '</div>');
 }
 
-async function cancelBooking(id) {
-  if (currentUser?.isPinUser) {
-    const pinUser = JSON.parse(sessionStorage.getItem('pin_user'));
-    const pin = prompt('Inserisci il tuo PIN per confermare la cancellazione:');
-    if (!pin) return;
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/cancel-booking`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, nome: pinUser.name, pin })
-    });
-    const json = await res.json();
-    if (!res.ok || !json.ok) { toast(json.error || 'Errore'); return; }
-  } else {
-    const { error } = await sb.from('vehicle_bookings').update({status:'cancelled'}).eq('id',id);
-    if (error) { toast('Errore'); return; }
-  }
+let _pendingCancelId = null;
+
+function closePinConfirm() {
+  document.getElementById('pin-confirm-modal').style.display = 'none';
+  document.getElementById('pin-confirm-input').value = '';
+  document.getElementById('pin-confirm-err').textContent = '';
+  _pendingCancelId = null;
+}
+
+async function confirmPinCancel() {
+  const pin = document.getElementById('pin-confirm-input').value.trim();
+  const err = document.getElementById('pin-confirm-err');
+  err.textContent = '';
+  if (!pin || pin.length !== 5) { err.textContent = 'Inserisci il PIN a 5 cifre'; return; }
+  const pinUser = JSON.parse(sessionStorage.getItem('pin_user'));
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/cancel-booking`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: _pendingCancelId, nome: pinUser.name, pin })
+  });
+  const json = await res.json();
+  if (!res.ok || !json.ok) { err.textContent = json.error || 'Errore'; return; }
+  closePinConfirm();
   await loadBookings();
   closeModal();
   if (currentView==='cal')   renderCal();
   if (currentView==='list')  renderList();
   if (currentView==='admin') renderAdmin();
   toast('Prenotazione annullata');
+}
+
+async function cancelBooking(id) {
+  if (currentUser?.isPinUser) {
+    _pendingCancelId = id;
+    document.getElementById('pin-confirm-modal').style.display = 'flex';
+    document.getElementById('pin-confirm-input').focus();
+  } else {
+    const { error } = await sb.from('vehicle_bookings').update({status:'cancelled'}).eq('id',id);
+    if (error) { toast('Errore'); return; }
+    await loadBookings();
+    closeModal();
+    if (currentView==='cal')   renderCal();
+    if (currentView==='list')  renderList();
+    if (currentView==='admin') renderAdmin();
+    toast('Prenotazione annullata');
+  }
 }
 
 function openPersonModal(id) {
@@ -908,5 +932,22 @@ function toast(msg) {
   await loadPinNames();
 })();
 </script>
+
+<!-- Modal conferma PIN -->
+<div id="pin-confirm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg);border-radius:var(--radius-lg);padding:24px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">Conferma cancellazione</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Inserisci il tuo PIN per confermare</p>
+    <input id="pin-confirm-input" type="password" inputmode="numeric" maxlength="5"
+      placeholder="•••••"
+      style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:16px;background:var(--bg2);color:var(--text);margin-bottom:8px;box-sizing:border-box">
+    <div id="pin-confirm-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1;padding:8px" onclick="closePinConfirm()">Annulla</button>
+      <button class="btn primary" style="flex:1;padding:8px" onclick="confirmPinCancel()">Conferma</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
