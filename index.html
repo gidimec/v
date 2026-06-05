@@ -2673,6 +2673,7 @@ function openUserModal(email, nameHint) {
     </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
+      ${u?.email ? `<button class="btn" style="color:var(--blue)" onclick="openChangePassword('${u.email}','${u.name}')">🔑 Password</button>` : ''}
       <button class="btn primary" onclick="saveUser('${u?.email||''}','${u?.name||''}')">Salva</button>
     </div>`);
 }
@@ -2740,6 +2741,62 @@ function showModal(html) {
   document.getElementById('modal-area').innerHTML =
     `<div class="modal-bg" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()">${html}</div></div>`;
 }
+
+function openChangePassword(email, name) {
+  closeModal();
+  showModal(`
+    <h2>Cambia password</h2>
+    <div class="modal-sub">Stai cambiando la password di <strong>${name}</strong></div>
+    <div class="field"><label>Nuova password</label>
+      <input id="cp-pass" type="password" placeholder="minimo 6 caratteri"
+        style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:13px;background:var(--bg2);color:var(--text)">
+    </div>
+    <div class="field"><label>Conferma password</label>
+      <input id="cp-pass2" type="password" placeholder="ripeti la password"
+        style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:13px;background:var(--bg2);color:var(--text)">
+    </div>
+    <div id="cp-err" style="color:var(--red);font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
+    <div class="field"><label>Tua password (per confermare)</label>
+      <input id="cp-adminpass" type="password" placeholder="la tua password amministratore"
+        style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:13px;background:var(--bg2);color:var(--text)">
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <button class="btn primary" onclick="doChangePassword('${email}')">Cambia password</button>
+    </div>
+  `);
+}
+
+async function doChangePassword(targetEmail) {
+  const newPass   = document.getElementById('cp-pass').value;
+  const newPass2  = document.getElementById('cp-pass2').value;
+  const adminPass = document.getElementById('cp-adminpass').value;
+  const err = document.getElementById('cp-err');
+  err.textContent = '';
+  if (!newPass || newPass.length < 6) { err.textContent = 'La password deve essere di almeno 6 caratteri'; return; }
+  if (newPass !== newPass2) { err.textContent = 'Le password non coincidono'; return; }
+  if (!adminPass) { err.textContent = 'Inserisci la tua password per confermare'; return; }
+  const btn = event.target;
+  btn.textContent = 'Attendere...';
+  btn.disabled = true;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/change-password`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      admin_email: currentUser.email,
+      admin_password: adminPass,
+      target_email: targetEmail,
+      new_password: newPass
+    })
+  });
+  const json = await res.json();
+  btn.textContent = 'Cambia password';
+  btn.disabled = false;
+  if (!res.ok || !json.ok) { err.textContent = json.error || 'Errore'; return; }
+  closeModal();
+  toast('Password cambiata con successo');
+}
+
 function closeModal() { document.getElementById('modal-area').innerHTML = ''; }
 function toast(msg) {
   const t = document.createElement('div');
