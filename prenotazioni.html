@@ -767,8 +767,21 @@ async function showBookingDetail(id) {
 }
 
 async function cancelBooking(id) {
-  const { error } = await sb.from('vehicle_bookings').update({status:'cancelled'}).eq('id',id);
-  if (error) { toast('Errore'); return; }
+  if (currentUser?.isPinUser) {
+    const pinUser = JSON.parse(sessionStorage.getItem('pin_user'));
+    const pin = prompt('Inserisci il tuo PIN per confermare la cancellazione:');
+    if (!pin) return;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/cancel-booking`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, nome: pinUser.name, pin })
+    });
+    const json = await res.json();
+    if (!res.ok || !json.ok) { toast(json.error || 'Errore'); return; }
+  } else {
+    const { error } = await sb.from('vehicle_bookings').update({status:'cancelled'}).eq('id',id);
+    if (error) { toast('Errore'); return; }
+  }
   await loadBookings();
   closeModal();
   if (currentView==='cal')   renderCal();
