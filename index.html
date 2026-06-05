@@ -859,9 +859,11 @@ function renderCalOraria() {
   const nFull    = colsFull.length;
   const minW     = 64 + 5 * nFull * 80 + 80;
   const dateStrings = dates.map(d => fmt(d));
+  window._weekDates = dates;
 
   // Mappa assenze
   const absenceMap = {};
+  window._absenceMap = absenceMap;
   absences.forEach(a => {
     if (!a.driver_id) return;
     if (!absenceMap[a.driver_id]) absenceMap[a.driver_id] = new Set();
@@ -1448,6 +1450,13 @@ document.addEventListener('mouseup', () => {
     const dur = Math.abs(selDrag.endSlot - selDrag.startSlot)+1;
     const day = selDrag.day, drvId = selDrag.drv;
     selDrag=null; clearHighlight();
+    if (drvId !== 'extra' && window._absenceMap?.[drvId] && window._weekDates) {
+      const ds = fmt(window._weekDates[day]);
+      if (window._absenceMap[drvId].has(ds)) {
+        const drvName = drivers.find(x=>x.id==drvId)?.name || drvId;
+        toast(`${drvName} è assente in questo giorno`); return;
+      }
+    }
     openTripForm(null, day, lo, dur, drvId);
   }
 });
@@ -1464,8 +1473,12 @@ function clearHighlight() { document.querySelectorAll('.selecting,.sel-top,.sel-
 
 function showCtxMenu(x, y, day, slot, dur, drvId) {
   const ctx = document.getElementById('ctx');
+  const _absDayStr = window._weekDates ? fmt(window._weekDates[day]) : null;
+  const _absBlocked = drvId && drvId !== 'extra' && _absDayStr && window._absenceMap?.[drvId]?.has(_absDayStr);
   ctx.innerHTML = `<div class="ctx-label">${DAYS_FULL[day]} · ${slotToTime(slot)}${dur>1?' – '+slotToTime(slot+dur):''}</div>
-    <div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur},'${drvId||''}');hideCtx()">+ Inserisci viaggio</div>
+    ${_absBlocked
+      ? `<div class="ctx-item" style="color:var(--text3);cursor:default">⛔ Autista assente</div>`
+      : `<div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur},'${drvId||''}');hideCtx()">+ Inserisci viaggio</div>`}
     ${selectedTrips.size>0?`<div class="ctx-item" onclick="deleteSelectedTrips();hideCtx()" style="color:var(--red)">🗑️ Elimina ${selectedTrips.size} selezionati</div>`:''}`;
   ctx.style.display='block'; ctx.style.left=x+'px'; ctx.style.top=y+'px';
   setTimeout(() => document.addEventListener('click', hideCtx, { once: true }), 0);
