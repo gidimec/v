@@ -2686,18 +2686,16 @@ function openUserModal(email, nameHint) {
           value="${u?.pin||''}" placeholder="es. 12345"
           style="letter-spacing:4px;text-align:center">
       </div>
-      <div class="field" style="display:flex;align-items:flex-end;padding-bottom:4px">
+      <div class="field" style="display:flex;gap:20px;align-items:center;padding-bottom:12px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
           <input type="checkbox" id="fu-canbook" ${u?.can_book?'checked':''} style="width:16px;height:16px">
-          <span>Accesso app prenotazioni</span>
+          <span>App prenotazioni</span>
         </label>
-      </div>
-      ${u?.email !== undefined ? `<div class="field" style="display:flex;align-items:flex-end;padding-bottom:12px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
+        ${u?.email !== undefined ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
           <input type="checkbox" id="fu-cantransport" ${u?.can_transport!==false?'checked':''} style="width:16px;height:16px">
-          <span>Accesso app trasporti</span>
-        </label>
-      </div>` : ''}
+          <span>App trasporti</span>
+        </label>` : ''}
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
