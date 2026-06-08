@@ -355,21 +355,36 @@ async function doLogin() {
   const err   = document.getElementById('ls-err');
   err.textContent = '';
   if (!email || !pass) { err.textContent = 'Inserisci email e password'; return; }
-  const lockStatus = await checkLoginLock(email);
-  if (lockStatus?.locked) {
-    err.textContent = `Account bloccato. Riprova tra ${lockStatus.mins} minuti o contatta l'amministratore.`;
-    return;
+
+  // Controlla blocco tentativi
+  const { data: lockData } = await sb.from('login_attempts').select('*').eq('identifier', email).single();
+  if (lockData?.locked_until) {
+    const lockEnd = new Date(lockData.locked_until);
+    if (lockEnd > new Date()) {
+      const mins = Math.ceil((lockEnd - Date.now()) / 60000);
+      err.textContent = `Account bloccato. Riprova tra ${mins} minuti o contatta l'amministratore.`;
+      return;
+    }
   }
+
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
   if (error) {
-    const attempts = await recordFailedAttempt(email);
+    const attempts = (lockData?.attempts || 0) + 1;
+    const lockedUntil = attempts >= MAX_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60000).toISOString() : null;
+    if (lockData) {
+      await sb.from('login_attempts').update({ attempts, locked_until: lockedUntil, last_attempt: new Date().toISOString() }).eq('identifier', email);
+    } else {
+      await sb.from('login_attempts').insert({ identifier: email, attempts, last_attempt: new Date().toISOString() });
+    }
     const remaining = MAX_ATTEMPTS - attempts;
     err.textContent = remaining <= 0
       ? `Account bloccato per ${LOCK_MINUTES} minuti. Contatta l'amministratore.`
       : `Password errata. Tentativi rimasti: ${remaining}`;
     return;
   }
-  await clearLoginAttempts(email);
+
+  // Login ok — azzera tentativi
+  if (lockData) await sb.from('login_attempts').update({ attempts: 0, locked_until: null }).eq('identifier', email);
   await onLogin(data.user);
 }
 
