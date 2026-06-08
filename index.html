@@ -641,6 +641,12 @@ async function onLogin(user) {
   const { data: roleData } = await sb.from('user_roles').select('*').eq('email', user.email).single();
   const role = roleData ? roleData.role : 'viewer';
   const name = roleData ? roleData.name : user.email.split('@')[0];
+  // Blocca accesso se can_transport è esplicitamente false
+  if (roleData && roleData.can_transport === false) {
+    await sb.auth.signOut();
+    document.getElementById('ls-err').textContent = 'Non hai accesso a questa applicazione.';
+    return;
+  }
   currentUser = { id: user.id, email: user.email, name, role };
   document.getElementById('user-label').textContent = currentUser.name;
   hideLoginScreen();
@@ -2492,7 +2498,7 @@ function openAbsenceModal(id) {
     </div>
     <div class="frow">
       <div class="field"><label>Dal</label>
-        <input id="fa-from" type="date" value="${a?a.date_from:today}" onchange="const t=document.getElementById('fa-to');if(!t.value||t.value<this.value)t.value=this.value;">
+        <input id="fa-from" type="date" value="${a?a.date_from:today}">
       </div>
       <div class="field"><label>Al</label>
         <input id="fa-to" type="date" value="${a?a.date_to:today}">
@@ -2680,12 +2686,18 @@ function openUserModal(email, nameHint) {
           value="${u?.pin||''}" placeholder="es. 12345"
           style="letter-spacing:4px;text-align:center">
       </div>
-      <div class="field" style="display:flex;align-items:flex-end;padding-bottom:12px">
+      <div class="field" style="display:flex;align-items:flex-end;padding-bottom:4px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
           <input type="checkbox" id="fu-canbook" ${u?.can_book?'checked':''} style="width:16px;height:16px">
           <span>Accesso app prenotazioni</span>
         </label>
       </div>
+      ${u?.email !== undefined ? `<div class="field" style="display:flex;align-items:flex-end;padding-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
+          <input type="checkbox" id="fu-cantransport" ${u?.can_transport!==false?'checked':''} style="width:16px;height:16px">
+          <span>Accesso app trasporti</span>
+        </label>
+      </div>` : ''}
     </div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
@@ -2701,6 +2713,8 @@ async function saveUser(existingEmail, existingName) {
   const role     = document.getElementById('fu-role').value;
   const pin      = document.getElementById('fu-pin').value.trim() || null;
   const can_book = document.getElementById('fu-canbook').checked;
+  const cantEl = document.getElementById('fu-cantransport');
+  const can_transport = cantEl ? cantEl.checked : true;
 
   if (!name) { toast('Inserisci il nome'); return; }
   if (pin && pin.length !== 5) { toast('Il PIN deve essere di 5 cifre'); return; }
@@ -2709,7 +2723,7 @@ async function saveUser(existingEmail, existingName) {
     // Utente solo PIN: verifica che non esista già con stesso nome
   }
 
-  const payload = { name, department: dept, role, can_book, pin };
+  const payload = { name, department: dept, role, can_book, can_transport, pin };
 
   if (existingEmail || existingName) {
     let query = sb.from('user_roles').update(payload);
