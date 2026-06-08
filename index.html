@@ -2695,10 +2695,10 @@ function openUserModal(email, nameHint) {
           <input type="checkbox" id="fu-canbook" ${u?.can_book?'checked':''} style="width:16px;height:16px">
           <span>App prenotazioni</span>
         </label>
-        ${u?.email !== undefined ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
           <input type="checkbox" id="fu-cantransport" ${u?.can_transport!==false?'checked':''} style="width:16px;height:16px">
           <span>App trasporti</span>
-        </label>` : ''}
+        </label>
       </div>
     </div>
     <div class="btn-row">
