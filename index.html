@@ -2660,10 +2660,6 @@ function openUserModal(email, nameHint) {
     return `<option value="${r}" ${u&&u.role===r?'selected':''}>${labels[r]}</option>`;
   }).join('');
   showModal(`<h2>${u?'Modifica utente':'Nuovo utente'}</h2>
-    ${!u?`<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">
-      ⚠️ Per accesso con email: crea prima l'utente su Supabase → Authentication.<br>
-      Per solo PIN: lascia email vuota.
-    </div>`:''}
     <div class="frow">
       <div class="field"><label>Nome</label>
         <input id="fu-name" value="${u?u.name:''}" placeholder="es. Marco Rossi">
@@ -2680,6 +2676,14 @@ function openUserModal(email, nameHint) {
         <select id="fu-role">${roleOpts}</select>
       </div>
     </div>
+    ${!u?`<div class="frow" id="fu-pass-row">
+      <div class="field"><label>Password (se ha email)</label>
+        <input id="fu-pass" type="password" placeholder="minimo 6 caratteri">
+      </div>
+      <div class="field"><label>Conferma password</label>
+        <input id="fu-pass2" type="password" placeholder="ripeti la password">
+      </div>
+    </div>`:''}
     <div class="frow">
       <div class="field"><label>PIN a 5 cifre (opzionale)</label>
         <input id="fu-pin" type="password" inputmode="numeric" maxlength="5"
@@ -2731,19 +2735,29 @@ async function saveUser(existingEmail, existingName) {
     if (error) { toast('Errore: '+error.message); return; }
     toast('Utente aggiornato');
   } else {
+    // Se ha email, crea prima l'utente in Supabase Auth tramite Edge Function
+    if (email) {
+      const pass = document.getElementById('fu-pass')?.value || '';
+      const pass2 = document.getElementById('fu-pass2')?.value || '';
+      if (!pass || pass.length < 6) { toast('Inserisci una password di almeno 6 caratteri'); return; }
+      if (pass !== pass2) { toast('Le password non coincidono'); return; }
+      const adminPass = prompt('Inserisci la tua password amministratore per confermare:');
+      if (!adminPass) return;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-user`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_email: currentUser.email, admin_password: adminPass, new_email: email, new_password: pass })
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) { toast(json.error || 'Errore creazione utente'); return; }
+    }
     // email può essere null per utenti solo PIN
     const insertPayload = { ...payload };
     if (email) insertPayload.email = email;
     const { error } = await sb.from('user_roles').insert(insertPayload);
-    if (error) {
-      if (error.message.includes('null value') || error.message.includes('not-null')) {
-        toast('Esegui prima il SQL per rendere email opzionale (vedi istruzioni)');
-      } else {
-        toast('Errore: '+error.message);
-      }
-      return;
-    }
+    if (error) { toast('Errore: '+error.message); return; }
     toast('Utente aggiunto');
+    sb.from('activity_log').insert({ username: currentUser.name, action: `Creato utente: ${name}${email?' ('+email+')':''}` });
   }
   closeModal(); renderUsers();
 }
