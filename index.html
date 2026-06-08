@@ -2838,13 +2838,20 @@ init();
     if (!note) return;
     tt.textContent = note;
     tt.style.display = 'block';
-    const r = icon.getBoundingClientRect();
-    let left = r.left - tt.offsetWidth - 6;
-    let top = r.top;
-    if (left < 8) left = r.right + 6;
-    if (top + tt.offsetHeight > window.innerHeight - 8) top = window.innerHeight - tt.offsetHeight - 8;
-    tt.style.left = left + 'px';
-    tt.style.top = top + 'px';
+    tt.style.left = '-9999px';
+    tt.style.top = '-9999px';
+    requestAnimationFrame(function(){
+      const r = icon.getBoundingClientRect();
+      const tw = tt.offsetWidth, th = tt.offsetHeight;
+      let left = r.left - tw - 8;
+      let top = r.top;
+      if (left < 8) left = r.right + 8;
+      if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+      if (top + th > window.innerHeight - 8) top = window.innerHeight - th - 8;
+      if (top < 8) top = 8;
+      tt.style.left = left + 'px';
+      tt.style.top = top + 'px';
+    });
   });
   document.addEventListener('mouseout', function(e){
     const icon = e.target.closest('.trip-note-icon');
