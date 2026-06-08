@@ -2492,7 +2492,7 @@ function openAbsenceModal(id) {
     </div>
     <div class="frow">
       <div class="field"><label>Dal</label>
-        <input id="fa-from" type="date" value="${a?a.date_from:today}">
+        <input id="fa-from" type="date" value="${a?a.date_from:today}" onchange="const t=document.getElementById('fa-to');if(!t.value||t.value<this.value)t.value=this.value;">
       </div>
       <div class="field"><label>Al</label>
         <input id="fa-to" type="date" value="${a?a.date_to:today}">
