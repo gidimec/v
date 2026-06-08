@@ -2741,23 +2741,21 @@ async function saveUser(existingEmail, existingName) {
       const pass2 = document.getElementById('fu-pass2')?.value || '';
       if (!pass || pass.length < 6) { toast('Inserisci una password di almeno 6 caratteri'); return; }
       if (pass !== pass2) { toast('Le password non coincidono'); return; }
-      const adminPass = prompt('Inserisci la tua password amministratore per confermare:');
-      if (!adminPass) return;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-user`, {
-        method: 'POST',
-        headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_email: currentUser.email, admin_password: adminPass, new_email: email, new_password: pass })
-      });
-      const json = await res.json();
-      if (!res.ok || !json.ok) { toast(json.error || 'Errore creazione utente'); return; }
+      // Salva dati in attesa della conferma admin
+      window._pendingNewUser = { email, pass, payload: {...payload, email} };
+      document.getElementById('cu-adminpass').value = '';
+      document.getElementById('cu-err').textContent = '';
+      document.getElementById('cu-confirm-modal').style.display = 'flex';
+      return;
     }
-    // email può essere null per utenti solo PIN
-    const insertPayload = { ...payload };
-    if (email) insertPayload.email = email;
-    const { error } = await sb.from('user_roles').insert(insertPayload);
-    if (error) { toast('Errore: '+error.message); return; }
-    toast('Utente aggiunto');
-    sb.from('activity_log').insert({ username: currentUser.name, action: `Creato utente: ${name}${email?' ('+email+')':''}` });
+    // Utente solo PIN — inserisci direttamente
+    if (!email) {
+      const { error } = await sb.from('user_roles').insert(payload);
+      if (error) { toast('Errore: '+error.message); return; }
+      toast('Utente aggiunto');
+      sb.from('activity_log').insert({ username: currentUser.name, action: `Creato utente PIN: ${name}` });
+    }
+    // Se ha email, il flusso continua nel modal confirmCreateUser()
   }
   closeModal(); renderUsers();
 }
@@ -2885,6 +2883,52 @@ init();
     tt.style.display = 'none';
   });
 })();
+</script>
+<!-- Modal conferma admin per creazione utente -->
+<div id="cu-confirm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg);border-radius:var(--radius-lg);padding:24px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">Conferma creazione utente</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Inserisci la tua password amministratore</p>
+    <input id="cu-adminpass" type="password" placeholder="••••••••"
+      style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:8px;box-sizing:border-box">
+    <div id="cu-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1;padding:8px" onclick="closeCuConfirm()">Annulla</button>
+      <button class="btn primary" style="flex:1;padding:8px" onclick="confirmCreateUser()">Crea utente</button>
+    </div>
+  </div>
+</div>
+<script>
+function closeCuConfirm() {
+  document.getElementById('cu-confirm-modal').style.display = 'none';
+  window._pendingNewUser = null;
+}
+
+async function confirmCreateUser() {
+  const adminPass = document.getElementById('cu-adminpass').value;
+  const err = document.getElementById('cu-err');
+  err.textContent = '';
+  if (!adminPass) { err.textContent = 'Inserisci la tua password'; return; }
+  const { email, pass, payload } = window._pendingNewUser;
+  const btn = document.querySelector('#cu-confirm-modal .btn.primary');
+  btn.textContent = 'Attendere...'; btn.disabled = true;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-user`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admin_email: currentUser.email, admin_password: adminPass, new_email: email, new_password: pass })
+  });
+  const json = await res.json();
+  btn.textContent = 'Crea utente'; btn.disabled = false;
+  if (!res.ok || !json.ok) { err.textContent = json.error || 'Errore creazione utente'; return; }
+  // Crea in user_roles
+  const { error } = await sb.from('user_roles').insert(payload);
+  if (error) { err.textContent = 'Errore: '+error.message; return; }
+  sb.from('activity_log').insert({ username: currentUser.name, action: `Creato utente: ${payload.name} (${email})` });
+  closeCuConfirm();
+  closeModal();
+  renderUsers();
+  toast('Utente creato con successo');
+}
 </script>
 </body>
 </html>
