@@ -818,15 +818,25 @@ async function cancelBooking(id) {
     document.getElementById('pin-confirm-modal').style.display = 'flex';
     document.getElementById('pin-confirm-input').focus();
   } else {
-    const { error } = await sb.from('vehicle_bookings').update({status:'cancelled'}).eq('id',id);
-    if (error) { toast('Errore'); return; }
-    await loadBookings();
-    closeModal();
-    if (currentView==='cal')   renderCal();
-    if (currentView==='list')  renderList();
-    if (currentView==='admin') renderAdmin();
-    toast('Prenotazione annullata');
+    const bk = bookings.find(b=>b.id===id);
+    const desc = bk ? `Annullare la prenotazione di <strong>${bk.booker_name}</strong> per <strong>${bk.destination}</strong>?` : 'Annullare questa prenotazione?';
+    showModal(`<h2>🗑️ Annulla prenotazione</h2>
+      <p style="color:var(--text2);line-height:1.6;margin-bottom:20px">${desc}</p>
+      <div class="btn-row">
+        <button class="btn" onclick="closeModal()">Annulla</button>
+        <button class="btn danger" onclick="closeModal();_doCancelBooking(${id})">Sì, elimina</button>
+      </div>`);
   }
+}
+
+async function _doCancelBooking(id) {
+  const { error } = await sb.from('vehicle_bookings').update({status:'cancelled'}).eq('id',id);
+  if (error) { toast('Errore'); return; }
+  await loadBookings();
+  if (currentView==='cal')   renderCal();
+  if (currentView==='list')  renderList();
+  if (currentView==='admin') renderAdmin();
+  toast('Prenotazione annullata');
 }
 
 function openPersonModal(id) {
