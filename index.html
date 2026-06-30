@@ -6,8 +6,8 @@
 <title>Viaggi Autisti</title>
 
 <script>
-  const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';   // ← incolla il tuo Project URL
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';    // ← incolla il tuo anon public key
+  const SUPABASE_URL = '';   // ← incolla il tuo Project URL
+  const SUPABASE_KEY = '';    // ← incolla il tuo anon public key
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -94,8 +94,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .slot-row.sel-bot{border-bottom:2px solid var(--blue)!important}
 .slot-row.drop-target{background:rgba(55,138,221,.2)}
 .trip-block{position:absolute;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:500;cursor:grab;overflow:hidden;border-left:3px solid transparent;line-height:1.3;z-index:1;transition:box-shadow .1s,opacity .1s}
-.trip-note-icon{position:absolute;top:2px;right:3px;font-size:10px;cursor:default;line-height:1;z-index:2}
-#trip-note-global-tooltip{display:none;position:fixed;background:var(--bg);border:0.5px solid var(--border2);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--text);white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;width:200px;max-width:200px;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.15);pointer-events:none;line-height:1.5;font-weight:400}
 .trip-block:hover{box-shadow:0 2px 10px rgba(0,0,0,.2)}
 .trip-block.dragging{opacity:.35;cursor:grabbing}
 .trip-ghost{position:fixed;pointer-events:none;border-radius:4px;padding:3px 6px;font-size:10px;font-weight:500;z-index:9999;border-left:3px solid transparent;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.25);min-width:90px}
@@ -641,12 +639,6 @@ async function onLogin(user) {
   const { data: roleData } = await sb.from('user_roles').select('*').eq('email', user.email).single();
   const role = roleData ? roleData.role : 'viewer';
   const name = roleData ? roleData.name : user.email.split('@')[0];
-  // Blocca accesso se can_transport è esplicitamente false
-  if (roleData && roleData.can_transport === false) {
-    await sb.auth.signOut();
-    document.getElementById('ls-err').textContent = 'Non hai accesso a questa applicazione.';
-    return;
-  }
   currentUser = { id: user.id, email: user.email, name, role };
   document.getElementById('user-label').textContent = currentUser.name;
   hideLoginScreen();
@@ -657,6 +649,49 @@ async function onLogin(user) {
   const calWrap = document.getElementById('cal-wrap');
   void calWrap.offsetHeight;
   renderCal();
+
+  // Controlla se deve cambiare password al primo accesso
+  if (roleData?.must_change_password) {
+    showForcePasswordModal();
+  }
+}
+
+function showForcePasswordModal() {
+  showModal(`<h2>🔐 Cambio password obbligatorio</h2>
+    <p style="color:var(--text2);margin-bottom:16px;line-height:1.5">
+      Per motivi di sicurezza devi impostare una nuova password prima di continuare.
+    </p>
+    <div class="field"><label>Nuova password</label>
+      <input id="fp-new" type="password" placeholder="Minimo 6 caratteri">
+    </div>
+    <div class="field"><label>Conferma password</label>
+      <input id="fp-confirm" type="password" placeholder="Ripeti la password">
+    </div>
+    <div id="fp-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <div class="btn-row">
+      <button class="btn primary" style="width:100%" onclick="doForcePasswordChange()">Imposta nuova password</button>
+    </div>`);
+  // Blocca chiusura modal cliccando fuori
+  const modalBg = document.querySelector('.modal-bg');
+  if (modalBg) modalBg.onclick = (e) => e.stopPropagation();
+}
+
+async function doForcePasswordChange() {
+  const pass1 = document.getElementById('fp-new').value;
+  const pass2 = document.getElementById('fp-confirm').value;
+  const err = document.getElementById('fp-err');
+  err.textContent = '';
+  if (pass1.length < 6) { err.textContent = 'La password deve avere almeno 6 caratteri'; return; }
+  if (pass1 !== pass2) { err.textContent = 'Le password non coincidono'; return; }
+
+  const { error } = await sb.auth.updateUser({ password: pass1 });
+  if (error) { err.textContent = 'Errore: ' + error.message; return; }
+
+  // Aggiorna flag nel DB
+  await sb.from('user_roles').update({ must_change_password: false }).eq('email', currentUser.email);
+
+  closeModal();
+  toast('✅ Password aggiornata con successo');
 }
 
 function updateUIForRole() {
@@ -867,11 +902,9 @@ function renderCalOraria() {
   const nFull    = colsFull.length;
   const minW     = 64 + 5 * nFull * 80 + 80;
   const dateStrings = dates.map(d => fmt(d));
-  window._weekDates = dates;
 
   // Mappa assenze
   const absenceMap = {};
-  window._absenceMap = absenceMap;
   absences.forEach(a => {
     if (!a.driver_id) return;
     if (!absenceMap[a.driver_id]) absenceMap[a.driver_id] = new Set();
@@ -926,7 +959,7 @@ function renderCalOraria() {
       body += `<div style="flex:${isSab?1:nFull};min-width:${isSab?80:nFull*80}px;display:flex;border-left:0.5px solid var(--border2)">`;
       dayCols.forEach(c => {
         const isAbsent = c.id !== 'extra' && absenceMap[c.id]?.has(dateStr);
-        body += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(220,50,50,.08);':''}"></div>`;
+        body += `<div class="drv-slot${isHour?' hour-top':''}" id="ds-${di}-${s}-${c.id}" data-day="${di}" data-slot="${s}" data-drv="${c.id}" style="flex:1;border-right:0.5px solid var(--border);${isAbsent?'background:rgba(0,0,0,.035);':''}"></div>`;
       });
       body += `</div>`;
     }
@@ -1143,10 +1176,9 @@ function renderTrips() {
     const extraName = getExtraName(t);
     const displayNote = getDisplayNote(t);
     const blockLabel = drv ? drv.name.split(' ')[0] : (extraName || 'Extra');
-    block.innerHTML = `
-      ${displayNote ? `<span class="trip-note-icon" data-note="${displayNote.replace(/"/g,'&quot;')}">📝</span>` : ''}
-      <div style="overflow:hidden;word-break:break-word;font-weight:600;line-height:1.3;padding-right:${displayNote?'12px':'2px'}">${t.dest}</div>
+    block.innerHTML = `<div style="overflow:hidden;word-break:break-word;font-weight:600;line-height:1.3">${t.dest}</div>
       ${veh ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px;opacity:.75">🚛 ${veh.name}</div>` : ''}
+      ${displayNote ? `<div style="font-size:10px;font-weight:600;margin-top:1px;border-top:1px solid currentColor;padding-top:1px;opacity:.7;overflow:hidden;word-break:break-word;line-height:1.3">📝 ${displayNote}</div>` : ''}
       <div class="trip-resize-handle" data-trip-id="${t.id}"></div>`;
 
     block.addEventListener('mousedown', e => {
@@ -1459,13 +1491,6 @@ document.addEventListener('mouseup', () => {
     const dur = Math.abs(selDrag.endSlot - selDrag.startSlot)+1;
     const day = selDrag.day, drvId = selDrag.drv;
     selDrag=null; clearHighlight();
-    if (drvId !== 'extra' && window._absenceMap?.[drvId] && window._weekDates) {
-      const ds = fmt(window._weekDates[day]);
-      if (window._absenceMap[drvId].has(ds)) {
-        const drvName = drivers.find(x=>x.id==drvId)?.name || drvId;
-        toast(`${drvName} è assente in questo giorno`); return;
-      }
-    }
     openTripForm(null, day, lo, dur, drvId);
   }
 });
@@ -1482,12 +1507,8 @@ function clearHighlight() { document.querySelectorAll('.selecting,.sel-top,.sel-
 
 function showCtxMenu(x, y, day, slot, dur, drvId) {
   const ctx = document.getElementById('ctx');
-  const _absDayStr = window._weekDates ? fmt(window._weekDates[day]) : null;
-  const _absBlocked = drvId && drvId !== 'extra' && _absDayStr && window._absenceMap?.[drvId]?.has(_absDayStr);
   ctx.innerHTML = `<div class="ctx-label">${DAYS_FULL[day]} · ${slotToTime(slot)}${dur>1?' – '+slotToTime(slot+dur):''}</div>
-    ${_absBlocked
-      ? `<div class="ctx-item" style="color:var(--text3);cursor:default">⛔ Autista assente</div>`
-      : `<div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur},'${drvId||''}');hideCtx()">+ Inserisci viaggio</div>`}
+    <div class="ctx-item" onclick="openTripForm(null,${day},${slot},${dur},'${drvId||''}');hideCtx()">+ Inserisci viaggio</div>
     ${selectedTrips.size>0?`<div class="ctx-item" onclick="deleteSelectedTrips();hideCtx()" style="color:var(--red)">🗑️ Elimina ${selectedTrips.size} selezionati</div>`:''}`;
   ctx.style.display='block'; ctx.style.left=x+'px'; ctx.style.top=y+'px';
   setTimeout(() => document.addEventListener('click', hideCtx, { once: true }), 0);
@@ -2498,7 +2519,7 @@ function openAbsenceModal(id) {
     </div>
     <div class="frow">
       <div class="field"><label>Dal</label>
-        <input id="fa-from" type="date" value="${a?a.date_from:today}" onchange="const t=document.getElementById('fa-to');if(!t.value||t.value<this.value)t.value=this.value;">
+        <input id="fa-from" type="date" value="${a?a.date_from:today}">
       </div>
       <div class="field"><label>Al</label>
         <input id="fa-to" type="date" value="${a?a.date_to:today}">
@@ -2635,6 +2656,7 @@ async function renderUsers() {
       </div>
       <span class="role-badge ${roleClass[u.role]||'role-viewer'}" style="margin-right:8px">${roleLabel[u.role]||u.role}</span>
       ${isLocked?`<button class="btn success" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="unlockUser('${u.email||''}','${u.name}')">🔓 Sblocca</button>`:''}
+      ${u.email?`<span class="tag" style="cursor:pointer;margin-right:4px" title="Richiedi cambio password al prossimo accesso" onclick="forcePasswordReset('${u.email}','${u.name}')">🔐</span>`:''}
       <span class="tag" style="cursor:pointer;margin-right:4px" onclick="openUserModal('${u.email||''}','${u.name}')">✏️</span>
       <span class="tag" style="cursor:pointer;background:var(--red-bg);color:var(--red)" onclick="confirmDeleteUser('${u.email||''}','${u.name}')">🗑️</span>
     </div>`;
@@ -2653,6 +2675,13 @@ async function unlockUser(email, name) {
   renderUsers();
 }
 
+async function forcePasswordReset(email, name) {
+  const { error } = await sb.from('user_roles').update({ must_change_password: true }).eq('email', email);
+  if (error) { toast('Errore'); return; }
+  toast(`🔐 ${name} dovrà cambiare la password al prossimo accesso`);
+  renderUsers();
+}
+
 function openUserModal(email, nameHint) {
   const u = email ? usersList.find(x => x.email === email) : (nameHint ? usersList.find(x => x.name === nameHint) : null);
   const roleOpts = ['admin','operatore','viewer'].map(r => {
@@ -2660,6 +2689,10 @@ function openUserModal(email, nameHint) {
     return `<option value="${r}" ${u&&u.role===r?'selected':''}>${labels[r]}</option>`;
   }).join('');
   showModal(`<h2>${u?'Modifica utente':'Nuovo utente'}</h2>
+    ${!u?`<div style="font-size:12px;color:var(--text2);background:var(--bg2);padding:8px 12px;border-radius:var(--radius);margin-bottom:14px">
+      ⚠️ Per accesso con email: crea prima l'utente su Supabase → Authentication.<br>
+      Per solo PIN: lascia email vuota.
+    </div>`:''}
     <div class="frow">
       <div class="field"><label>Nome</label>
         <input id="fu-name" value="${u?u.name:''}" placeholder="es. Marco Rossi">
@@ -2676,34 +2709,30 @@ function openUserModal(email, nameHint) {
         <select id="fu-role">${roleOpts}</select>
       </div>
     </div>
-    ${!u?`<div class="frow" id="fu-pass-row">
-      <div class="field"><label>Password (se ha email)</label>
-        <input id="fu-pass" type="password" placeholder="minimo 6 caratteri">
-      </div>
-      <div class="field"><label>Conferma password</label>
-        <input id="fu-pass2" type="password" placeholder="ripeti la password">
-      </div>
-    </div>`:''}
     <div class="frow">
       <div class="field"><label>PIN a 5 cifre (opzionale)</label>
         <input id="fu-pin" type="password" inputmode="numeric" maxlength="5"
           value="${u?.pin||''}" placeholder="es. 12345"
           style="letter-spacing:4px;text-align:center">
       </div>
-      <div class="field" style="display:flex;gap:20px;align-items:center;padding-bottom:12px;flex-wrap:wrap">
+      <div class="field" style="display:flex;align-items:flex-end;padding-bottom:12px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
           <input type="checkbox" id="fu-canbook" ${u?.can_book?'checked':''} style="width:16px;height:16px">
-          <span>App prenotazioni</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0">
-          <input type="checkbox" id="fu-cantransport" ${u?.can_transport!==false?'checked':''} style="width:16px;height:16px">
-          <span>App trasporti</span>
+          <span>Accesso app prenotazioni</span>
         </label>
       </div>
     </div>
+    ${!u ? `<div style="border:0.5px solid var(--border2);border-radius:var(--radius);padding:10px 12px;background:var(--bg2);margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="fu-forcepass" checked style="width:16px;height:16px;cursor:pointer">
+        <div>
+          <div style="font-weight:500;font-size:13px">Richiedi cambio password al primo accesso</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">L'utente dovrà impostare una nuova password personale al primo login.</div>
+        </div>
+      </label>
+    </div>` : ''}
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Annulla</button>
-      ${u?.email ? `<button class="btn" style="color:var(--blue)" onclick="openChangePassword('${u.email}','${u.name}')">🔑 Password</button>` : ''}
       <button class="btn primary" onclick="saveUser('${u?.email||''}','${u?.name||''}')">Salva</button>
     </div>`);
 }
@@ -2715,8 +2744,6 @@ async function saveUser(existingEmail, existingName) {
   const role     = document.getElementById('fu-role').value;
   const pin      = document.getElementById('fu-pin').value.trim() || null;
   const can_book = document.getElementById('fu-canbook').checked;
-  const cantEl = document.getElementById('fu-cantransport');
-  const can_transport = cantEl ? cantEl.checked : true;
 
   if (!name) { toast('Inserisci il nome'); return; }
   if (pin && pin.length !== 5) { toast('Il PIN deve essere di 5 cifre'); return; }
@@ -2725,7 +2752,7 @@ async function saveUser(existingEmail, existingName) {
     // Utente solo PIN: verifica che non esista già con stesso nome
   }
 
-  const payload = { name, department: dept, role, can_book, can_transport, pin };
+  const payload = { name, department: dept, role, can_book, pin };
 
   if (existingEmail || existingName) {
     let query = sb.from('user_roles').update(payload);
@@ -2735,27 +2762,22 @@ async function saveUser(existingEmail, existingName) {
     if (error) { toast('Errore: '+error.message); return; }
     toast('Utente aggiornato');
   } else {
-    // Se ha email, crea prima l'utente in Supabase Auth tramite Edge Function
-    if (email) {
-      const pass = document.getElementById('fu-pass')?.value || '';
-      const pass2 = document.getElementById('fu-pass2')?.value || '';
-      if (!pass || pass.length < 6) { toast('Inserisci una password di almeno 6 caratteri'); return; }
-      if (pass !== pass2) { toast('Le password non coincidono'); return; }
-      // Salva dati in attesa della conferma admin
-      window._pendingNewUser = { email, pass, payload: {...payload, email} };
-      document.getElementById('cu-adminpass').value = '';
-      document.getElementById('cu-err').textContent = '';
-      document.getElementById('cu-confirm-modal').style.display = 'flex';
+    // email può essere null per utenti solo PIN
+    const insertPayload = { ...payload };
+    if (email) insertPayload.email = email;
+    // Forza cambio password al primo accesso (solo se ha email)
+    const forcePass = document.getElementById('fu-forcepass')?.checked;
+    if (email && forcePass) insertPayload.must_change_password = true;
+    const { error } = await sb.from('user_roles').insert(insertPayload);
+    if (error) {
+      if (error.message.includes('null value') || error.message.includes('not-null')) {
+        toast('Esegui prima il SQL per rendere email opzionale (vedi istruzioni)');
+      } else {
+        toast('Errore: '+error.message);
+      }
       return;
     }
-    // Utente solo PIN — inserisci direttamente
-    if (!email) {
-      const { error } = await sb.from('user_roles').insert(payload);
-      if (error) { toast('Errore: '+error.message); return; }
-      toast('Utente aggiunto');
-      sb.from('activity_log').insert({ username: currentUser.name, action: `Creato utente PIN: ${name}` });
-    }
-    // Se ha email, il flusso continua nel modal confirmCreateUser()
+    toast('Utente aggiunto');
   }
   closeModal(); renderUsers();
 }
@@ -2781,63 +2803,6 @@ function showModal(html) {
   document.getElementById('modal-area').innerHTML =
     `<div class="modal-bg" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()">${html}</div></div>`;
 }
-
-function openChangePassword(email, name) {
-  closeModal();
-  showModal(`
-    <h2>Cambia password</h2>
-    <div class="modal-sub">Stai cambiando la password di <strong>${name}</strong></div>
-    <div class="field"><label>Nuova password</label>
-      <input id="cp-pass" type="password" placeholder="minimo 6 caratteri"
-        style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:13px;background:var(--bg2);color:var(--text)">
-    </div>
-    <div class="field"><label>Conferma password</label>
-      <input id="cp-pass2" type="password" placeholder="ripeti la password"
-        style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:13px;background:var(--bg2);color:var(--text)">
-    </div>
-    <div id="cp-err" style="color:var(--red);font-size:12px;min-height:16px;margin:-4px 0 8px"></div>
-    <div class="field"><label>Tua password (per confermare)</label>
-      <input id="cp-adminpass" type="password" placeholder="la tua password amministratore"
-        style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:13px;background:var(--bg2);color:var(--text)">
-    </div>
-    <div class="btn-row">
-      <button class="btn" onclick="closeModal()">Annulla</button>
-      <button class="btn primary" onclick="doChangePassword('${email}')">Cambia password</button>
-    </div>
-  `);
-}
-
-async function doChangePassword(targetEmail) {
-  const newPass   = document.getElementById('cp-pass').value;
-  const newPass2  = document.getElementById('cp-pass2').value;
-  const adminPass = document.getElementById('cp-adminpass').value;
-  const err = document.getElementById('cp-err');
-  err.textContent = '';
-  if (!newPass || newPass.length < 6) { err.textContent = 'La password deve essere di almeno 6 caratteri'; return; }
-  if (newPass !== newPass2) { err.textContent = 'Le password non coincidono'; return; }
-  if (!adminPass) { err.textContent = 'Inserisci la tua password per confermare'; return; }
-  const btn = event.target;
-  btn.textContent = 'Attendere...';
-  btn.disabled = true;
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/change-password`, {
-    method: 'POST',
-    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      admin_email: currentUser.email,
-      admin_password: adminPass,
-      target_email: targetEmail,
-      new_password: newPass
-    })
-  });
-  const json = await res.json();
-  btn.textContent = 'Cambia password';
-  btn.disabled = false;
-  if (!res.ok || !json.ok) { err.textContent = json.error || 'Errore'; return; }
-  closeModal();
-  sb.from('activity_log').insert({ username: currentUser.name, action: `Cambio password per ${targetEmail}` });
-toast('Password cambiata con successo');
-}
-
 function closeModal() { document.getElementById('modal-area').innerHTML = ''; }
 function toast(msg) {
   const t = document.createElement('div');
@@ -2850,85 +2815,6 @@ function toast(msg) {
 }
 
 init();
-</script>
-<div id="trip-note-global-tooltip"></div>
-<script>
-(function(){
-  const tt = document.getElementById('trip-note-global-tooltip');
-  document.addEventListener('mouseover', function(e){
-    const icon = e.target.closest('.trip-note-icon');
-    if (!icon) return;
-    const note = icon.dataset.note;
-    if (!note) return;
-    tt.textContent = note;
-    tt.style.display = 'block';
-    tt.style.left = '-9999px';
-    tt.style.top = '-9999px';
-    requestAnimationFrame(function(){
-      const r = icon.getBoundingClientRect();
-      const tw = tt.offsetWidth, th = tt.offsetHeight;
-      let left = r.left - tw - 8;
-      let top = r.top;
-      if (left < 8) left = r.right + 8;
-      if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
-      if (top + th > window.innerHeight - 8) top = window.innerHeight - th - 8;
-      if (top < 8) top = 8;
-      tt.style.left = left + 'px';
-      tt.style.top = top + 'px';
-    });
-  });
-  document.addEventListener('mouseout', function(e){
-    const icon = e.target.closest('.trip-note-icon');
-    if (!icon) return;
-    tt.style.display = 'none';
-  });
-})();
-</script>
-<!-- Modal conferma admin per creazione utente -->
-<div id="cu-confirm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:var(--bg);border-radius:var(--radius-lg);padding:24px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-    <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">Conferma creazione utente</h3>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Inserisci la tua password amministratore</p>
-    <input id="cu-adminpass" type="password" placeholder="••••••••"
-      style="width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px 10px;font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:8px;box-sizing:border-box">
-    <div id="cu-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn" style="flex:1;padding:8px" onclick="closeCuConfirm()">Annulla</button>
-      <button class="btn primary" style="flex:1;padding:8px" onclick="confirmCreateUser()">Crea utente</button>
-    </div>
-  </div>
-</div>
-<script>
-function closeCuConfirm() {
-  document.getElementById('cu-confirm-modal').style.display = 'none';
-  window._pendingNewUser = null;
-}
-
-async function confirmCreateUser() {
-  const adminPass = document.getElementById('cu-adminpass').value;
-  const err = document.getElementById('cu-err');
-  err.textContent = '';
-  if (!adminPass) { err.textContent = 'Inserisci la tua password'; return; }
-  const { email, pass, payload } = window._pendingNewUser;
-  const btn = document.querySelector('#cu-confirm-modal .btn.primary');
-  btn.textContent = 'Attendere...'; btn.disabled = true;
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-user`, {
-    method: 'POST',
-    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ admin_email: currentUser.email, admin_password: adminPass, new_email: email, new_password: pass })
-  });
-  const json = await res.json();
-  btn.textContent = 'Crea utente'; btn.disabled = false;
-  if (!res.ok || !json.ok) { err.textContent = json.error || 'Errore creazione utente'; return; }
-  // Crea in user_roles
-  const { error } = await sb.from('user_roles').insert(payload);
-  if (error) { err.textContent = 'Errore: '+error.message; return; }
-  sb.from('activity_log').insert({ username: currentUser.name, action: `Creato utente: ${payload.name} (${email})` });
-  closeCuConfirm();
-  closeModal();
-  renderUsers();
-  toast('Utente creato con successo');
-}
 </script>
 </body>
 </html>
