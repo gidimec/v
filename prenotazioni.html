@@ -60,7 +60,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .cal-tbl th:first-child{text-align:left;width:100px;position:sticky;left:0;z-index:3;border-right:0.5px solid var(--border2)}
 .cal-tbl th.today-col{color:var(--blue)}
 .cal-tbl td{padding:4px;border-bottom:0.5px solid var(--border);border-right:0.5px solid var(--border);vertical-align:top;min-width:100px}
-.cal-tbl td:first-child{background:var(--bg2);border-right:0.5px solid var(--border2);position:sticky;left:0;z-index:1;padding:8px 10px;min-width:100px}
+.cal-tbl td:first-child{background:var(--bg2);border-right:0.5px solid var(--border2);position:sticky;left:0;z-index:1;padding:8px 10px;min-width:100px;vertical-align:middle}
 .veh-label{font-weight:600;font-size:12px}
 .veh-plate{font-size:10px;color:var(--text2);margin-top:1px}
 .cell-inner{min-height:54px}
@@ -187,7 +187,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <button class="btn primary" id="btn-new" style="padding:5px 14px;font-size:12px;display:none" onclick="openBookingModal(null,null)">+ Prenota</button>
       <button class="user-btn" onclick="showProfile()">
         <div class="avatar" id="user-avatar">?</div>
         <span id="user-label">...</span>
@@ -209,7 +208,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
           <div class="tab active" id="tab-all" onclick="setFilter('all')">Tutte le prenotazioni</div>
           <div class="tab" id="tab-mine" onclick="setFilter('mine')">Le mie</div>
         </div>
-        <button class="btn primary" id="btn-new-cal" style="padding:5px 14px;font-size:12px;display:none" onclick="openBookingModal(null,null)">+ Prenota</button>
       </div>
       <div class="cal-wrap"><table class="cal-tbl" id="cal-tbl"></table></div>
     </div>
@@ -345,7 +343,10 @@ async function doLoginPin() {
   const person = json.user;
   currentUser = { id: 'pin_'+(person.email||person.name), email: null, isPinUser: true };
   const mappedRole = person.role === 'admin' ? 'gestore' : 'utente';
-  await onLoginPerson({ ...person, role: mappedRole });
+  const fullPerson = { ...person, role: mappedRole };
+  // Salva sessione PIN in sessionStorage (solo per il login via PIN, non per email/password)
+  sessionStorage.setItem('pin_user', JSON.stringify(fullPerson));
+  await onLoginPerson(fullPerson);
 }
 
 
@@ -393,15 +394,9 @@ async function onLoginPerson(person) {
   const initials = person.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
   document.getElementById('user-avatar').textContent = initials;
   document.getElementById('user-label').textContent  = person.name;
-  if (canBook()) {
-    document.getElementById('btn-new').style.display     = 'flex';
-    document.getElementById('btn-new-cal').style.display = 'flex';
-  }
   if (isGestore()) document.getElementById('sb-admin').style.display = 'flex';
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('main-app').style.display     = 'flex';
-  // Salva sessione PIN in sessionStorage
-  sessionStorage.setItem('pin_user', JSON.stringify(person));
   await loadAll();
   requestAnimationFrame(() => requestAnimationFrame(() => renderCal()));
   startAutoRefresh();
@@ -561,6 +556,8 @@ function renderCal() {
       }
       // Mostra SEMPRE tutte le prenotazioni nel calendario — filtro 'mine' solo nella lista
       let dayBk = bookings.filter(b => b.vehicle_id===v.id && b.date===dateStr);
+      const slotOrder = { morning: 0, afternoon: 1, full: 2 };
+      dayBk = dayBk.slice().sort((a,b) => (slotOrder[a.time_slot]??9) - (slotOrder[b.time_slot]??9));
       html += '<td><div class="cell-inner">';
       if (dayBk.length > 0) {
         dayBk.forEach(bk => {
