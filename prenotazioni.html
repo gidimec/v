@@ -423,6 +423,10 @@ async function onLogin(user) {
   // Solo admin → gestore (vede tutti), operatore/viewer → utente (vede solo sé)
   const mappedRole = rd.role === 'admin' ? 'gestore' : 'utente';
   await onLoginPerson({ ...rd, role: mappedRole });
+  // Controlla se deve cambiare password al primo accesso
+  if (rd.must_change_password) {
+    showForcePasswordModal(rd.name, rd.email);
+  }
 }
 
 function startAutoRefresh() {
@@ -934,6 +938,104 @@ async function doLogout() {
   if (!currentUser?.isPinUser) await sb.auth.signOut();
   closeModal();
   setTimeout(() => location.reload(), 200);
+}
+
+// ══════════════════════════════════════════════════
+//  CAMBIO PASSWORD OBBLIGATORIO (primo accesso)
+// ══════════════════════════════════════════════════
+let fpUser = null; // {name, email} dell'utente che deve cambiare password
+
+function showForcePasswordModal(name, email) {
+  fpUser = { name, email };
+  showModal(`<h2>🔐 Cambio password obbligatorio</h2>
+    <p style="color:var(--text2);margin-bottom:16px;line-height:1.5">
+      Per motivi di sicurezza devi impostare una nuova password prima di continuare.
+    </p>
+    <div class="field"><label>Nuova password</label>
+      <input id="fp-new" type="password" placeholder="Almeno 8 caratteri" oninput="updatePasswordStrength()">
+    </div>
+    <div id="fp-strength-bar" style="height:4px;border-radius:2px;background:var(--bg3);margin:-8px 0 10px;overflow:hidden">
+      <div id="fp-strength-fill" style="height:100%;width:0%;background:var(--red);transition:all .2s"></div>
+    </div>
+    <div id="fp-requirements" style="font-size:11px;color:var(--text2);line-height:1.8;margin-bottom:14px">
+      <div id="req-len">○ Almeno 8 caratteri</div>
+      <div id="req-upper">○ Una lettera maiuscola</div>
+      <div id="req-lower">○ Una lettera minuscola</div>
+      <div id="req-num">○ Un numero</div>
+      <div id="req-special">○ Un carattere speciale (!@#$%...)</div>
+      <div id="req-name">○ Non deve contenere il tuo nome</div>
+    </div>
+    <div class="field"><label>Conferma password</label>
+      <input id="fp-confirm" type="password" placeholder="Ripeti la password" oninput="updatePasswordStrength()">
+    </div>
+    <div id="fp-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <div class="btn-row">
+      <button class="btn primary" id="fp-submit-btn" style="width:100%" disabled onclick="doForcePasswordChange()">Imposta nuova password</button>
+    </div>`);
+  const modalBg = document.querySelector('.modal-bg');
+  if (modalBg) modalBg.onclick = (e) => e.stopPropagation();
+}
+
+function checkPasswordRequirements(pass) {
+  const name = (fpUser?.name || '').toLowerCase().replace(/\s+/g, '');
+  const nameParts = (fpUser?.name || '').toLowerCase().split(/\s+/).filter(p => p.length >= 3);
+  const passLower = pass.toLowerCase();
+  const containsName = nameParts.some(part => passLower.includes(part)) || (name && passLower.includes(name));
+  return {
+    len:     pass.length >= 8,
+    upper:   /[A-Z]/.test(pass),
+    lower:   /[a-z]/.test(pass),
+    num:     /[0-9]/.test(pass),
+    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/.test(pass),
+    noName:  !containsName,
+  };
+}
+
+function updatePasswordStrength() {
+  const pass = document.getElementById('fp-new').value;
+  const confirm = document.getElementById('fp-confirm').value;
+  const req = checkPasswordRequirements(pass);
+  const setReq = (id, ok, label) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = (ok ? '✅ ' : '○ ') + label;
+    el.style.color = ok ? 'var(--green)' : 'var(--text2)';
+  };
+  setReq('req-len',     req.len,     'Almeno 8 caratteri');
+  setReq('req-upper',   req.upper,   'Una lettera maiuscola');
+  setReq('req-lower',   req.lower,   'Una lettera minuscola');
+  setReq('req-num',     req.num,     'Un numero');
+  setReq('req-special', req.special, 'Un carattere speciale (!@#$%...)');
+  setReq('req-name',    req.noName,  'Non deve contenere il tuo nome');
+  const passedCount = Object.values(req).filter(Boolean).length;
+  const pct = (passedCount / 6) * 100;
+  const fill = document.getElementById('fp-strength-fill');
+  if (fill) {
+    fill.style.width = pct + '%';
+    fill.style.background = pct < 50 ? 'var(--red)' : pct < 100 ? 'var(--yellow)' : 'var(--green)';
+  }
+  const allOk = Object.values(req).every(Boolean);
+  const matches = pass.length > 0 && pass === confirm;
+  const btn = document.getElementById('fp-submit-btn');
+  if (btn) btn.disabled = !(allOk && matches);
+  const err = document.getElementById('fp-err');
+  if (err) err.textContent = (confirm.length > 0 && pass !== confirm) ? 'Le password non coincidono' : '';
+}
+
+async function doForcePasswordChange() {
+  const pass1 = document.getElementById('fp-new').value;
+  const pass2 = document.getElementById('fp-confirm').value;
+  const err = document.getElementById('fp-err');
+  err.textContent = '';
+  const req = checkPasswordRequirements(pass1);
+  if (!Object.values(req).every(Boolean)) { err.textContent = 'La password non soddisfa tutti i requisiti'; return; }
+  if (pass1 !== pass2) { err.textContent = 'Le password non coincidono'; return; }
+  const { error } = await sb.auth.updateUser({ password: pass1 });
+  if (error) { err.textContent = 'Errore: ' + error.message; return; }
+  await sb.from('user_roles').update({ must_change_password: false }).eq('email', fpUser.email);
+  closeModal();
+  toast('✅ Password aggiornata con successo');
+  fpUser = null;
 }
 
 function showModal(html) {
