@@ -1,0 +1,378 @@
+<!--
+  PRENOTAZIONI — VARIANTE TABLET/KIOSK per il magazzino chiavi
+  File indipendente, punta allo stesso Supabase di prenotazioni_v2.html.
+  Richiede la deploy dell'edge function "kiosk-names" (vedi kiosk-names_index.ts)
+  e la migrazione SQL già applicata per prenotazioni_v2.html (start_datetime,
+  end_datetime, actual_return_datetime, returned_by_name/email).
+-->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gestione Mezzi — Kiosk</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html,body { margin:0; height:100%; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#12151a; color:#eef1f5; }
+  .screen { position:fixed; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; padding:24px; }
+  .screen.active { display:flex; }
+  .brand { position:absolute; top:24px; left:32px; font-size:16px; font-weight:700; letter-spacing:.5px; color:#7fa8d9; }
+  .clock { position:absolute; top:24px; right:32px; font-size:16px; color:#8a92a3; }
+
+  h1 { font-size:26px; margin:0 0 28px; font-weight:600; text-align:center; }
+  .grid-names { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:18px; max-width:900px; width:100%; }
+  .tile { background:#1c2129; border:1px solid #2a3140; border-radius:20px; padding:22px 10px; text-align:center; cursor:pointer; transition:transform .1s; }
+  .tile:active { transform:scale(.94); background:#232a35; }
+  .tile .av { width:56px; height:56px; border-radius:50%; margin:0 auto 10px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; color:#0b0d10; }
+  .tile .nm { font-size:15px; font-weight:600; }
+
+  .backbtn { position:absolute; top:24px; left:32px; background:#232a35; border:none; color:#eef1f5; padding:10px 18px; border-radius:12px; font-size:14px; }
+
+  .pin-pad { display:grid; grid-template-columns:repeat(3,72px); gap:14px; margin-top:24px; }
+  .pin-key { width:72px; height:72px; border-radius:50%; background:#1c2129; border:1px solid #2a3140; color:#eef1f5; font-size:24px; }
+  .pin-key:active { background:#2a3140; }
+  .pin-dots { display:flex; gap:12px; margin-top:6px; }
+  .pin-dot { width:16px; height:16px; border-radius:50%; border:2px solid #4a5568; }
+  .pin-dot.filled { background:#5aa9ff; border-color:#5aa9ff; }
+  .pin-err { color:#ff6b6b; font-size:14px; min-height:20px; margin-top:12px; }
+
+  input.pw { font-size:22px; padding:16px 20px; border-radius:14px; border:1px solid #2a3140; background:#1c2129; color:#eef1f5; width:280px; text-align:center; margin-top:20px; }
+  .bigbtn { padding:14px 32px; font-size:18px; font-weight:600; border:none; border-radius:14px; margin-top:22px; background:#5aa9ff; color:#0b0d10; }
+
+  .actions { display:grid; grid-template-columns:1fr 1fr; gap:24px; max-width:640px; width:100%; margin-top:14px; }
+  .action-card { border-radius:28px; padding:60px 16px; text-align:center; font-size:22px; font-weight:700; cursor:pointer; }
+  .action-card:active { transform:scale(.96); }
+  .action-card.prenota { background:linear-gradient(160deg,#2d7a5f,#1e5c47); }
+  .action-card.riconsegna { background:linear-gradient(160deg,#3a6bb0,#284d82); }
+  .greet { font-size:22px; margin-bottom:6px; }
+  .idle-note { font-size:12px; color:#5b6472; margin-top:26px; }
+
+  .veh-list, .ret-list { width:100%; max-width:640px; display:flex; flex-direction:column; gap:12px; max-height:60vh; overflow-y:auto; }
+  .veh-row, .ret-row { background:#1c2129; border:1px solid #2a3140; border-radius:16px; padding:18px 20px; display:flex; justify-content:space-between; align-items:center; }
+  .veh-row .nm, .ret-row .nm { font-size:18px; font-weight:600; }
+  .veh-row .sub, .ret-row .sub { font-size:13px; color:#8a92a3; margin-top:4px; }
+  .chev { font-size:20px; color:#5aa9ff; }
+  .badge-late { background:#4a2020; color:#ff8b8b; font-size:12px; padding:4px 10px; border-radius:10px; }
+
+  .dur-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; max-width:640px; width:100%; margin-top:20px; }
+  .dur-btn { padding:20px 8px; border-radius:14px; background:#1c2129; border:1px solid #2a3140; color:#eef1f5; font-size:15px; font-weight:600; }
+  .dur-btn.sel { background:#2d7a5f; border-color:#2d7a5f; }
+
+  .confirm-box { text-align:center; }
+  .confirm-box .vname { font-size:24px; font-weight:700; margin-bottom:6px; }
+  .confirm-box .vsub { font-size:14px; color:#8a92a3; margin-bottom:26px; }
+  .row-btns { display:flex; gap:16px; }
+  .row-btns button { padding:16px 30px; border-radius:14px; font-size:16px; font-weight:600; border:none; }
+  .btn-cancel { background:#232a35; color:#eef1f5; }
+  .btn-ok { background:#5aa9ff; color:#0b0d10; }
+
+  .toast-ok { font-size:22px; text-align:center; }
+</style>
+</head>
+<body>
+
+<div class="clock" id="clock">--:--</div>
+
+<!-- SCREEN 1: griglia nomi -->
+<div class="screen active" id="screen-names">
+  <div class="brand">🚗 GESTIONE MEZZI</div>
+  <h1>Tocca il tuo nome</h1>
+  <div class="grid-names" id="names-grid"><div style="color:#8a92a3">Caricamento…</div></div>
+</div>
+
+<!-- SCREEN 2: auth (pin o password) -->
+<div class="screen" id="screen-auth">
+  <button class="backbtn" onclick="goNames()">← Indietro</button>
+  <h1 id="auth-greet">Ciao</h1>
+  <div id="auth-pin-area" style="display:none;flex-direction:column;align-items:center">
+    <div class="pin-dots" id="pin-dots"></div>
+    <div class="pin-pad" id="pin-pad"></div>
+    <div class="pin-err" id="pin-err"></div>
+  </div>
+  <div id="auth-pw-area" style="display:none;flex-direction:column;align-items:center">
+    <input class="pw" id="pw-input" type="password" placeholder="Password" inputmode="text">
+    <div class="pin-err" id="pw-err"></div>
+    <button class="bigbtn" onclick="doPasswordLogin()">Accedi</button>
+  </div>
+</div>
+
+<!-- SCREEN 3: home con due macro pulsanti -->
+<div class="screen" id="screen-home">
+  <button class="backbtn" onclick="logoutKiosk()">← Cambia utente</button>
+  <div class="greet" id="home-greet">Ciao</div>
+  <div class="actions">
+    <div class="action-card prenota" onclick="openPrenotaFlow()">🚗<br>PRENOTA</div>
+    <div class="action-card riconsegna" onclick="openRiconsegnaFlow()">🔑<br>RICONSEGNA</div>
+  </div>
+  <div class="idle-note">Torna alla home tra qualche secondo di inattività</div>
+</div>
+
+<!-- SCREEN 4: prenota - scelta mezzo -->
+<div class="screen" id="screen-prenota-veh">
+  <button class="backbtn" onclick="goHome()">← Indietro</button>
+  <h1>Scegli il mezzo</h1>
+  <div class="veh-list" id="prenota-veh-list"></div>
+</div>
+
+<!-- SCREEN 5: prenota - durata -->
+<div class="screen" id="screen-prenota-dur">
+  <button class="backbtn" onclick="openPrenotaFlow()">← Indietro</button>
+  <div class="confirm-box">
+    <div class="vname" id="dur-veh-name">—</div>
+    <div class="vsub">Per quanto tempo?</div>
+  </div>
+  <div class="dur-row" id="dur-options"></div>
+  <div class="row-btns" style="margin-top:28px">
+    <button class="btn-ok" onclick="confirmPrenota()">Conferma prenotazione</button>
+  </div>
+</div>
+
+<!-- SCREEN 6: riconsegna - lista -->
+<div class="screen" id="screen-riconsegna">
+  <button class="backbtn" onclick="goHome()">← Indietro</button>
+  <h1>Cosa stai riportando?</h1>
+  <div class="ret-list" id="riconsegna-list"></div>
+</div>
+
+<!-- SCREEN 7: toast successo -->
+<div class="screen" id="screen-success">
+  <div class="toast-ok" id="success-msg">✅ Fatto</div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ppmiwnploqjbhaqdkrxr.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbWl3bnBsb3FqYmhhcWRrcnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyODYyNTgsImV4cCI6MjA5Mjg2MjI1OH0.jqQ1qGXaIC2pJC5CG8RCcT3PYMOZvL7pdIWpLqILXl8';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const PALETTE_BG = ['#5aa9ff','#4ecb9f','#f0a35a','#c893f0','#f07a9b','#7fd15a'];
+
+let selectedPerson = null;   // { name, email, authType }
+let me = null;               // profilo completo dopo login (role, ecc.)
+let vehicles = [];
+let pinBuffer = '';
+let idleTimer = null;
+let prenotaVeh = null;
+let prenotaDurMs = null;
+let returnCandidates = [];
+
+function fmtClock(){ document.getElementById('clock').textContent = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}); }
+setInterval(fmtClock,1000); fmtClock();
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  resetIdle();
+}
+function resetIdle(){
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(()=>{ logoutKiosk(); }, 25000);
+}
+document.addEventListener('click', resetIdle);
+document.addEventListener('touchstart', resetIdle);
+
+function fmtDate(d){ return d.toISOString().slice(0,10); }
+
+// ── Caricamento nomi ──────────────────────────────
+let kioskUsers = [];
+async function loadNames(){
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/kiosk-names`, { headers:{ apikey: SUPABASE_KEY }});
+  const json = await res.json();
+  kioskUsers = json.users || [];
+  const grid = document.getElementById('names-grid');
+  if (!kioskUsers.length){ grid.innerHTML = '<div style="color:#8a92a3">Nessun utente configurato</div>'; return; }
+  grid.innerHTML = kioskUsers.map((u,i)=>{
+    const initials = u.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+    const bg = PALETTE_BG[i % PALETTE_BG.length];
+    return `<div class="tile" onclick="selectPersonByIndex(${i})">
+      <div class="av" style="background:${bg}">${initials}</div>
+      <div class="nm">${u.name}</div>
+    </div>`;
+  }).join('');
+}
+function selectPersonByIndex(i){ selectPerson(kioskUsers[i]); }
+
+function selectPerson(u){
+  selectedPerson = u;
+  document.getElementById('auth-greet').textContent = 'Ciao ' + u.name.split(' ')[0];
+  document.getElementById('auth-pin-area').style.display = u.authType==='pin' ? 'flex' : 'none';
+  document.getElementById('auth-pw-area').style.display  = u.authType==='pin' ? 'none' : 'flex';
+  if (u.authType==='pin'){ pinBuffer=''; renderPinPad(); updatePinDots(); document.getElementById('pin-err').textContent=''; }
+  else { document.getElementById('pw-input').value=''; document.getElementById('pw-err').textContent=''; }
+  showScreen('screen-auth');
+}
+
+function goNames(){ selectedPerson=null; me=null; showScreen('screen-names'); }
+
+function renderPinPad(){
+  const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+  document.getElementById('pin-pad').innerHTML = keys.map(k=>{
+    if (k==='') return '<div></div>';
+    return `<button class="pin-key" onclick="pinPress('${k}')">${k}</button>`;
+  }).join('');
+}
+function updatePinDots(){
+  document.getElementById('pin-dots').innerHTML = Array.from({length:5}).map((_,i)=>
+    `<div class="pin-dot ${i < pinBuffer.length ? 'filled':''}"></div>`).join('');
+}
+async function pinPress(k){
+  if (k==='⌫'){ pinBuffer = pinBuffer.slice(0,-1); updatePinDots(); return; }
+  if (pinBuffer.length>=5) return;
+  pinBuffer += k;
+  updatePinDots();
+  if (pinBuffer.length===5) await doPinLogin();
+}
+async function doPinLogin(){
+  const err = document.getElementById('pin-err');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/pin-login`, {
+    method:'POST', headers:{ apikey: SUPABASE_KEY, 'Content-Type':'application/json' },
+    body: JSON.stringify({ nome: selectedPerson.name, pin: pinBuffer })
+  });
+  const json = await res.json();
+  if (!res.ok || !json.ok){ err.textContent = json.error || 'PIN non corretto'; pinBuffer=''; updatePinDots(); return; }
+  const p = json.user;
+  me = { name:p.name, email:p.email||null, role: p.role==='admin' ? 'gestore':'utente', isPin:true };
+  await enterHome();
+}
+async function doPasswordLogin(){
+  const err = document.getElementById('pw-err');
+  const pass = document.getElementById('pw-input').value;
+  if (!pass){ err.textContent='Inserisci la password'; return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email: selectedPerson.email, password: pass });
+  if (error){ err.textContent = 'Password errata'; return; }
+  const { data: rd } = await sb.from('user_roles').select('*').eq('email', selectedPerson.email).single();
+  me = { name: rd?.name || selectedPerson.name, email: selectedPerson.email, role: rd?.role || 'utente', isPin:false };
+  await enterHome();
+}
+
+async function enterHome(){
+  document.getElementById('home-greet').textContent = 'Ciao ' + me.name.split(' ')[0] + ' 👋';
+  await loadVehicles();
+  showScreen('screen-home');
+}
+
+function goHome(){ showScreen('screen-home'); }
+
+function logoutKiosk(){
+  if (me && !me.isPin) sb.auth.signOut();
+  me = null; selectedPerson = null;
+  showScreen('screen-names');
+  loadNames();
+}
+
+async function loadVehicles(){
+  const { data } = await sb.from('vehicles').select('*').eq('active',true).eq('bookable',true).order('name');
+  vehicles = data || [];
+}
+
+// ── Helper range/conflitti (stessa logica della v2 desktop) ──
+const SLOT_WINDOWS = { morning:{startH:6,endH:13}, afternoon:{startH:13,endH:22}, full:{startH:0,endH:24} };
+function computeRange(dateStr, slot){
+  const w = SLOT_WINDOWS[slot];
+  const start = new Date(dateStr+'T00:00:00'); start.setHours(w.startH,0,0,0);
+  const end = new Date(dateStr+'T00:00:00');
+  if (w.endH===24){ end.setDate(end.getDate()+1); end.setHours(0,0,0,0); } else end.setHours(w.endH,0,0,0);
+  return {start,end};
+}
+function effectiveRange(bk){
+  const base = (bk.start_datetime && bk.end_datetime) ? {start:new Date(bk.start_datetime), end:new Date(bk.end_datetime)} : computeRange(bk.date, bk.time_slot);
+  if (bk.actual_return_datetime){
+    const actual = new Date(bk.actual_return_datetime);
+    if (actual < base.end) return {start:base.start, end:actual};
+  }
+  return base;
+}
+function overlap(aS,aE,bS,bE){ return aS<bE && aE>bS; }
+
+// ── PRENOTA (flusso rapido: adesso + durata) ──────
+async function openPrenotaFlow(){
+  const now = new Date();
+  const today = fmtDate(now);
+  const { data } = await sb.from('vehicle_bookings').select('*').gte('date', fmtDate(new Date(now.getTime()-86400000))).lte('date', fmtDate(new Date(now.getTime()+86400000))).neq('status','cancelled');
+  const bookings = data || [];
+  const free = vehicles.filter(v => !bookings.some(b => b.vehicle_id===v.id && overlap(now, new Date(now.getTime()+60000), effectiveRange(b).start, effectiveRange(b).end)));
+  const list = document.getElementById('prenota-veh-list');
+  if (!free.length){ list.innerHTML = '<div style="color:#8a92a3;text-align:center">Nessun mezzo libero in questo momento</div>'; }
+  else {
+    list.innerHTML = free.map(v => `<div class="veh-row" onclick='pickVehicle(${v.id})'>
+      <div><div class="nm">${v.name}</div><div class="sub">${v.plate||''}</div></div>
+      <div class="chev">›</div></div>`).join('');
+  }
+  showScreen('screen-prenota-veh');
+}
+function pickVehicle(id){
+  prenotaVeh = vehicles.find(v=>v.id===id);
+  document.getElementById('dur-veh-name').textContent = '🚗 ' + prenotaVeh.name + (prenotaVeh.plate ? ' · '+prenotaVeh.plate : '');
+  const opts = [ {label:'1 ora', ms:3600e3}, {label:'2 ore', ms:2*3600e3}, {label:'4 ore', ms:4*3600e3}, {label:'Resto giornata', ms:null} ];
+  prenotaDurMs = opts[0].ms;
+  document.getElementById('dur-options').innerHTML = opts.map((o,i)=>
+    `<div class="dur-btn ${i===0?'sel':''}" data-ms="${o.ms??'EOD'}" onclick="selectDur(this,'${o.ms??'EOD'}')">${o.label}</div>`).join('');
+  showScreen('screen-prenota-dur');
+}
+function selectDur(el,val){
+  document.querySelectorAll('.dur-btn').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+  prenotaDurMs = val==='EOD' ? 'EOD' : parseInt(val);
+}
+async function confirmPrenota(){
+  const now = new Date();
+  const start = now;
+  let end;
+  if (prenotaDurMs==='EOD'){ end = new Date(now); end.setHours(23,59,0,0); }
+  else end = new Date(now.getTime() + prenotaDurMs);
+  const dateStr = fmtDate(now);
+  const { error } = await sb.from('vehicle_bookings').insert({
+    vehicle_id: prenotaVeh.id, booker_email: me.email, booker_name: me.name,
+    date: dateStr, time_slot: 'custom', destination: 'Prenotazione rapida da tablet', notes: '',
+    status: 'confirmed', created_by: me.name,
+    start_datetime: start.toISOString(), end_datetime: end.toISOString(),
+  });
+  if (error){ alert('Errore: '+error.message); return; }
+  document.getElementById('success-msg').textContent = '✅ ' + prenotaVeh.name + ' prenotato';
+  showScreen('screen-success');
+  setTimeout(()=>logoutKiosk(), 2500);
+}
+
+// ── RICONSEGNA ─────────────────────────────────────
+async function openRiconsegnaFlow(){
+  const now = new Date();
+  const { data } = await sb.from('vehicle_bookings').select('*, vehicles(name,plate)')
+    .is('actual_return_datetime', null).neq('status','cancelled').order('date',{ascending:false}).limit(200);
+  let candidates = (data||[]).filter(b => effectiveRange(b).start <= now);
+  if (me.role !== 'gestore') candidates = candidates.filter(b => b.booker_email ? b.booker_email===me.email : b.booker_name===me.name);
+  returnCandidates = candidates;
+  const list = document.getElementById('riconsegna-list');
+  if (!candidates.length){ list.innerHTML = '<div style="color:#8a92a3;text-align:center">Nessun mezzo da riconsegnare</div>'; }
+  else {
+    list.innerHTML = candidates.map(b=>{
+      const er = effectiveRange(b);
+      const overdue = er.end < now;
+      return `<div class="ret-row" onclick='confirmReturn(${b.id})'>
+        <div><div class="nm">${b.vehicles?.name||'?'}</div><div class="sub">${b.vehicles?.plate||''} · rientro previsto ${er.end.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}</div></div>
+        ${overdue ? '<span class="badge-late">In ritardo</span>' : '<div class="chev">›</div>'}
+      </div>`;
+    }).join('');
+  }
+  showScreen('screen-riconsegna');
+}
+function confirmReturn(id){
+  const b = returnCandidates.find(x=>x.id===id);
+  if (!confirm('Confermi la riconsegna di '+(b.vehicles?.name||'questo mezzo')+' adesso?')) return;
+  doReturn(id, b.vehicles?.name);
+}
+async function doReturn(id, vname){
+  const nowIso = new Date().toISOString();
+  const { error } = await sb.from('vehicle_bookings').update({
+    actual_return_datetime: nowIso, returned_by_name: me.name, returned_by_email: me.email,
+  }).eq('id', id);
+  if (error){ alert('Errore: '+error.message); return; }
+  document.getElementById('success-msg').textContent = '✅ ' + (vname||'Mezzo') + ' riconsegnato';
+  showScreen('screen-success');
+  setTimeout(()=>logoutKiosk(), 2500);
+}
+
+loadNames();
+</script>
+</body>
+</html>
