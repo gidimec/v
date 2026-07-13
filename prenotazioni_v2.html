@@ -309,10 +309,16 @@ function computeRange(dateStr, slot, customStart, customEnd) {
 // Deriva un range anche per prenotazioni "vecchie" (v1) senza start/end_datetime,
 // così i conflitti si calcolano correttamente contro entrambi i formati
 function effectiveRange(bk) {
-  if (bk.start_datetime && bk.end_datetime) {
-    return { start: new Date(bk.start_datetime), end: new Date(bk.end_datetime) };
+  const base = (bk.start_datetime && bk.end_datetime)
+    ? { start: new Date(bk.start_datetime), end: new Date(bk.end_datetime) }
+    : computeRange(bk.date, bk.time_slot);
+  // Se il mezzo è già stato riconsegnato, per i conflitti conta solo fino
+  // all'orario reale di rientro: il resto della fascia torna prenotabile
+  if (bk.actual_return_datetime) {
+    const actual = new Date(bk.actual_return_datetime);
+    if (actual < base.end) return { start: base.start, end: actual };
   }
-  return computeRange(bk.date, bk.time_slot);
+  return base;
 }
 function rangesOverlap(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && aEnd > bStart;
