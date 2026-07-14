@@ -1,3 +1,22 @@
+<!--
+  PRENOTAZIONI v2 — richiede questa migrazione SQL su Supabase prima dell'uso
+  (non tocca né rimuove colonne esistenti, l'app v1 continua a funzionare invariata):
+
+  alter table vehicle_bookings
+    add column if not exists start_datetime timestamptz,
+    add column if not exists end_datetime timestamptz,
+    add column if not exists actual_return_datetime timestamptz,
+    add column if not exists returned_by_name text,
+    add column if not exists returned_by_email text;
+
+  create index if not exists idx_bookings_vehicle_range
+    on vehicle_bookings (vehicle_id, start_datetime, end_datetime)
+    where status <> 'cancelled';
+
+  NOTA: il trigger che alimenta booking_audit_log andrà esteso per registrare
+  anche l'evento di riconsegna (quando actual_return_datetime passa da null a
+  valorizzato). Non avendo il codice del trigger originale non l'ho modificato qui.
+-->
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -12,6 +31,7 @@
 
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -599,18 +619,31 @@ function renderCal() {
         </div></td>`;
         return;
       }
-      // Mostra SEMPRE tutte le prenotazioni nel calendario — filtro 'mine' solo nella lista
-      let dayBk = bookings.filter(b => b.vehicle_id===v.id && b.date===dateStr);
-      const slotOrder = { morning: 0, afternoon: 1, full: 2 };
-      dayBk = dayBk.slice().sort((a,b) => (slotOrder[a.time_slot]??9) - (slotOrder[b.time_slot]??9));
+      // Prendiamo tutte le prenotazioni che si sovrappongono a QUESTO giorno
+      // (00:00-24:00), non solo quelle il cui campo 'date' combacia — così
+      // una notturna 17/07→08:00 del 18/07 compare anche nella cella del 18
+      const dayStart = new Date(dateStr+'T00:00:00');
+      const dayEnd = new Date(dateStr+'T00:00:00'); dayEnd.setDate(dayEnd.getDate()+1);
+      let dayBk = bookings.filter(b => b.vehicle_id===v.id).filter(b => {
+        const er = effectiveRange(b);
+        return rangesOverlap(dayStart, dayEnd, er.start, er.end);
+      });
+      dayBk = dayBk.slice().sort((a,b) => effectiveRange(a).start - effectiveRange(b).start);
       html += '<td><div class="cell-inner">';
       if (dayBk.length > 0) {
         dayBk.forEach(bk => {
           const c = colorForEmail(bk.booker_email);
-          html += '<div class="bk-block" style="background:'+c.bg+';color:'+c.text+';border-left-color:'+c.border+'" onclick="showBookingDetail('+bk.id+')">' +
+          const er = effectiveRange(bk);
+          const startsToday = er.start >= dayStart;
+          const endsToday = er.end <= dayEnd;
+          const timeLbl = (startsToday ? er.start.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '&#8617; da ieri')
+            + ' &rarr; ' +
+            (endsToday ? er.end.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '&#127769; ' + er.end.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})+' '+er.end.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}));
+          const spillStyle = !startsToday ? 'opacity:0.7;border-style:dashed' : '';
+          html += '<div class="bk-block" style="background:'+c.bg+';color:'+c.text+';border-left-color:'+c.border+';'+spillStyle+'" onclick="showBookingDetail('+bk.id+')">' +
             '<div class="bk-name">'+(bk.booker_name||'?')+'</div>' +
             '<div class="bk-dest">'+(bk.destination||'&mdash;')+'</div>' +
-            '<div class="bk-slot">'+SLOT_LABEL[bk.time_slot]+'</div>' +
+            '<div class="bk-slot">'+timeLbl+'</div>' +
             '</div>';
         });
         if (canBook() && hasAvailableSlot(v.id, dateStr, dayBk)) {
@@ -628,10 +661,13 @@ function renderCal() {
 }
 
 function hasAvailableSlot(vehicleId, dateStr, existing) {
-  const hasFull = existing.some(b=>b.time_slot==='full');
-  const hasMorn = existing.some(b=>b.time_slot==='morning');
-  const hasAftn = existing.some(b=>b.time_slot==='afternoon');
-  return !hasFull && !(hasMorn && hasAftn);
+  const dayStart = new Date(dateStr+'T00:00:00');
+  const dayEnd = new Date(dateStr+'T00:00:00'); dayEnd.setDate(dayEnd.getDate()+1);
+  // "Pieno" solo se una prenotazione copre l'intera giornata da un capo all'altro
+  return !existing.some(b => {
+    const er = effectiveRange(b);
+    return er.start <= dayStart && er.end >= dayEnd;
+  });
 }
 
 async function renderList() {
@@ -712,6 +748,8 @@ function setAdminTab(tab) {
   if (tab==='log') renderAuditLog();
 }
 
+let lastAuditLog = [];
+
 async function renderAuditLog() {
   const body = document.getElementById('admin-log-body');
   body.innerHTML = '<div style="padding:20px;text-align:center"><div class="spinner"></div></div>';
@@ -721,8 +759,13 @@ async function renderAuditLog() {
     return;
   }
   const all = data || [];
+  lastAuditLog = all;
   if (!all.length) { body.innerHTML = '<div class="empty"><div class="empty-icon">&#128203;</div><p>Nessun evento registrato.</p></div>'; return; }
-  body.innerHTML = all.map(l => {
+  const exportBar = '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:12px">' +
+    '<button class="btn" style="font-size:12px;padding:6px 12px" onclick="exportAuditLogXlsx()">&#128202; Esporta XLSX</button>' +
+    '<button class="btn" style="font-size:12px;padding:6px 12px" onclick="exportAuditLogPdf()">&#128424;&#65039; Esporta PDF</button>' +
+  '</div>';
+  body.innerHTML = exportBar + all.map(l => {
     const isCancel = l.action === 'cancelled';
     const when = new Date(l.created_at).toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
     return '<div class="list-row">' +
@@ -732,6 +775,57 @@ async function renderAuditLog() {
       '</div>' +
     '</div>';
   }).join('');
+}
+
+function auditLogToRows() {
+  return lastAuditLog.map(l => ({
+    'Data evento': new Date(l.created_at).toLocaleString('it-IT'),
+    'Azione': l.action === 'cancelled' ? 'Annullata' : 'Creata',
+    'Prenotante': l.booker_name || '',
+    'Data prenotazione': l.booking_date || '',
+    'Fascia': SLOT_LABEL[l.time_slot] || l.time_slot || '',
+    'Mezzo': l.vehicle_name || '',
+    'Targa': l.vehicle_plate || '',
+    'Destinazione': l.destination || '',
+    'Eseguita da': l.performed_by || '',
+  }));
+}
+
+function exportAuditLogXlsx() {
+  if (!lastAuditLog.length) { toast('Nessun dato da esportare'); return; }
+  const rows = auditLogToRows();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, 16) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Log prenotazioni');
+  const stamp = fmt(new Date());
+  XLSX.writeFile(wb, 'log_prenotazioni_'+stamp+'.xlsx');
+}
+
+function exportAuditLogPdf() {
+  if (!lastAuditLog.length) { toast('Nessun dato da esportare'); return; }
+  const rows = auditLogToRows();
+  const cols = Object.keys(rows[0]);
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Log prenotazioni</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:24px;color:#111}
+      h1{font-size:16px;margin-bottom:4px}
+      .sub{font-size:11px;color:#666;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;font-size:10px}
+      th,td{border:1px solid #ccc;padding:5px 6px;text-align:left}
+      th{background:#f0f0f0}
+      @media print { @page { size: landscape; margin:12mm; } }
+    </style></head><body>
+    <h1>Log prenotazioni mezzi</h1>
+    <div class="sub">Esportato il ${new Date().toLocaleString('it-IT')} — ${rows.length} eventi</div>
+    <table><thead><tr>${cols.map(c=>'<th>'+c+'</th>').join('')}</tr></thead>
+    <tbody>${rows.map(r=>'<tr>'+cols.map(c=>'<td>'+(r[c]??'')+'</td>').join('')+'</tr>').join('')}</tbody>
+    </table>
+    </body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(()=>win.print(), 300);
 }
 
 async function openBookingModal(preVehicleId, preDate) {
@@ -793,7 +887,7 @@ async function openBookingModal(preVehicleId, preDate) {
       '<button class="btn" onclick="closeModal()">Annulla</button>' +
       '<button class="btn primary" id="bk-btn" onclick="saveBooking()">Prenota</button>' +
     '</div>');
-  if (preVehicleId && preDate) checkConflict();
+  checkConflict();
 }
 
 function onSlotChange() {
@@ -880,6 +974,7 @@ async function saveBooking() {
   if (!dest) { toast('Inserisci la destinazione'); return; }
   const range = currentRangeFromForm();
   if (!range) { toast('Controlla gli orari inseriti'); return; }
+  if (range.end <= range.start) { toast('L\'orario di fine deve essere successivo (o uguale al giorno dopo) all\'inizio'); return; }
   const veh = vehicles.find(v=>v.id===vehId);
   const { error } = await sb.from('vehicle_bookings').insert({
     vehicle_id: vehId,
