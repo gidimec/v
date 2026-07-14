@@ -1,3 +1,22 @@
+<!--
+  PRENOTAZIONI v2 — richiede questa migrazione SQL su Supabase prima dell'uso
+  (non tocca né rimuove colonne esistenti, l'app v1 continua a funzionare invariata):
+
+  alter table vehicle_bookings
+    add column if not exists start_datetime timestamptz,
+    add column if not exists end_datetime timestamptz,
+    add column if not exists actual_return_datetime timestamptz,
+    add column if not exists returned_by_name text,
+    add column if not exists returned_by_email text;
+
+  create index if not exists idx_bookings_vehicle_range
+    on vehicle_bookings (vehicle_id, start_datetime, end_datetime)
+    where status <> 'cancelled';
+
+  NOTA: il trigger che alimenta booking_audit_log andrà esteso per registrare
+  anche l'evento di riconsegna (quando actual_return_datetime passa da null a
+  valorizzato). Non avendo il codice del trigger originale non l'ho modificato qui.
+-->
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -753,11 +772,11 @@ async function renderAuditLog() {
     '<button class="btn" style="font-size:12px;padding:6px 12px" onclick="exportAuditLogPdf()">&#128424;&#65039; Esporta PDF</button>' +
   '</div>';
   body.innerHTML = exportBar + all.map(l => {
-    const isCancel = l.action === 'cancelled';
+    const icon = l.action === 'cancelled' ? '🗑️ Annullata' : l.action === 'returned' ? '🔑 Riconsegnata' : '📝 Creata';
     const when = new Date(l.created_at).toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
     return '<div class="list-row">' +
       '<div class="lr-info">' +
-        '<div class="lr-name">'+(isCancel?'🗑️ Annullata':'📝 Creata')+' &middot; '+(l.booker_name||'?')+' &middot; '+isoDisp(l.booking_date)+' &middot; '+(SLOT_LABEL[l.time_slot]||l.time_slot)+'</div>' +
+        '<div class="lr-name">'+icon+' &middot; '+(l.booker_name||'?')+' &middot; '+isoDisp(l.booking_date)+' &middot; '+(SLOT_LABEL[l.time_slot]||l.time_slot)+'</div>' +
         '<div class="lr-sub">&#128667; '+(l.vehicle_name||'?')+' '+(l.vehicle_plate?('('+l.vehicle_plate+')'):'')+' &middot; '+(l.destination||'&mdash;')+' &middot; da '+(l.performed_by||'?')+' &middot; '+when+'</div>' +
       '</div>' +
     '</div>';
@@ -767,7 +786,7 @@ async function renderAuditLog() {
 function auditLogToRows() {
   return lastAuditLog.map(l => ({
     'Data evento': new Date(l.created_at).toLocaleString('it-IT'),
-    'Azione': l.action === 'cancelled' ? 'Annullata' : 'Creata',
+    'Azione': l.action === 'cancelled' ? 'Annullata' : l.action === 'returned' ? 'Riconsegnata' : 'Creata',
     'Prenotante': l.booker_name || '',
     'Data prenotazione': l.booking_date || '',
     'Fascia': SLOT_LABEL[l.time_slot] || l.time_slot || '',
