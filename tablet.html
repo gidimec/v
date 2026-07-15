@@ -124,6 +124,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue)}
 .field textarea{resize:vertical;min-height:48px}
 .frow{display:flex;gap:8px}.frow .field{flex:1}
+#bk-custom-range{flex-direction:column;gap:10px}
+#bk-custom-range input{width:100%}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
 .modal{background:var(--bg);border-radius:var(--radius-lg);border:0.5px solid var(--border2);width:380px;max-width:100%;padding:20px;max-height:90dvh;overflow-y:auto}
 .modal h2{font-size:15px;font-weight:600;margin-bottom:12px}
@@ -161,6 +163,7 @@ body { font-size: 16px; }
 .btn, button { min-height: 40px; }
 .field input, .field select, .field textarea { font-size: 16px !important; padding: 12px !important; }
 .list-row { padding: 14px 16px; }
+.modal { width: 460px !important; }
 </style>
 </head>
 <body>
@@ -220,6 +223,19 @@ body { font-size: 16px; }
   </div>
 </div>
 
+<div id="kiosk-home" style="display:none;position:fixed;inset:0;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px;z-index:50">
+  <button class="user-btn" onclick="showProfile()" style="position:absolute;top:24px;right:24px">
+    <div class="avatar" id="kiosk-avatar">?</div>
+    <span id="kiosk-label">...</span>
+  </button>
+  <div style="font-size:22px;font-weight:700;margin-bottom:36px" id="kiosk-greet">Ciao 👋</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:680px;width:100%">
+    <div onclick="kioskGo('prenota')" style="background:linear-gradient(160deg,#2d7a5f,#1e5c47);border-radius:28px;padding:64px 16px;text-align:center;font-size:24px;font-weight:700;color:#fff;cursor:pointer">🚗<br>PRENOTA</div>
+    <div onclick="kioskGo('riconsegna')" style="background:linear-gradient(160deg,#3a6bb0,#284d82);border-radius:28px;padding:64px 16px;text-align:center;font-size:24px;font-weight:700;color:#fff;cursor:pointer">🔑<br>RICONSEGNA</div>
+  </div>
+  <div onclick="kioskGo('cal')" style="margin-top:28px;font-size:14px;color:var(--text2);text-decoration:underline;cursor:pointer">📅 Vedi il calendario completo</div>
+</div>
+
 <div class="app" id="main-app" style="display:none">
   <div class="topbar">
     <div style="display:flex;align-items:center">
@@ -231,6 +247,7 @@ body { font-size: 16px; }
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn" style="padding:8px 16px;font-weight:600" onclick="goKioskHome()">🏠 Home</button>
       <button class="btn primary" style="padding:8px 16px;font-weight:600" onclick="openBookingModal(null,null)">&#128663; Prenota</button>
       <button class="btn" style="padding:8px 16px;font-weight:600;border-color:var(--green);color:var(--green)" onclick="openReturnModal()">&#128273; Riconsegna</button>
       <button class="user-btn" onclick="showProfile()">
@@ -485,10 +502,29 @@ async function onLoginPerson(person) {
   document.getElementById('user-label').textContent  = person.name;
   if (isGestore()) document.getElementById('sb-admin').style.display = 'flex';
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('main-app').style.display     = 'flex';
+  document.getElementById('kiosk-avatar').textContent = initials;
+  document.getElementById('kiosk-label').textContent  = person.name;
+  document.getElementById('kiosk-greet').textContent  = 'Ciao ' + person.name.split(' ')[0] + ' 👋';
+  document.getElementById('kiosk-home').style.display = 'flex';
   await loadAll();
-  requestAnimationFrame(() => requestAnimationFrame(() => renderCal()));
   startAutoRefresh();
+}
+
+// ── Navigazione kiosk: pulsantoni ↔ app completa ──
+function goKioskHome() {
+  document.getElementById('main-app').style.display   = 'none';
+  document.getElementById('kiosk-home').style.display = 'flex';
+}
+function enterFullApp(view) {
+  document.getElementById('kiosk-home').style.display = 'none';
+  document.getElementById('main-app').style.display   = 'flex';
+  switchView(view);
+  if (view === 'cal') requestAnimationFrame(() => requestAnimationFrame(() => renderCal()));
+}
+function kioskGo(action) {
+  if (action === 'prenota')      { enterFullApp('cal'); openBookingModal(null,null); }
+  else if (action === 'riconsegna') { enterFullApp('cal'); openReturnModal(); }
+  else { enterFullApp('cal'); }
 }
 
 
@@ -1026,7 +1062,10 @@ async function saveBooking() {
 async function showBookingDetail(id) {
   const { data: bk } = await sb.from('vehicle_bookings').select('*, vehicles(name,plate)').eq('id',id).single();
   if (!bk) return;
+  const me = myProfile();
   const canCancel = isGestore() || bk.booker_email===currentUser?.email;
+  const canReturn = !bk.actual_return_datetime &&
+    (isGestore() || (bk.booker_email ? bk.booker_email===currentUser?.email : bk.booker_name===me?.name));
   const er = effectiveRange(bk);
   const orarioTxt = er.start.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' → '+er.end.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const returnTxt = bk.actual_return_datetime
@@ -1044,9 +1083,20 @@ async function showBookingDetail(id) {
     (bk.notes ? '<div class="field"><label>Note</label><div style="padding:4px 0;font-size:12px">'+bk.notes+'</div></div>' : '') +
     '<div style="font-size:11px;color:var(--text3)">Inserita da '+bk.created_by+'</div>' +
     '<div class="btn-row">' +
+      (canReturn ? '<button class="btn primary" onclick="returnFromDetail('+id+',\''+(bk.vehicles?.name||'?').replace(/'/g,"&apos;")+'\')">&#128273; Riconsegna</button>' : '') +
       (canCancel ? '<button class="btn danger" onclick="cancelBooking('+id+')">Annulla prenotazione</button>' : '') +
       '<button class="btn" onclick="closeModal()">Chiudi</button>' +
     '</div>');
+}
+
+function returnFromDetail(id, vname) {
+  showModal(`<h2>Conferma riconsegna</h2>
+    <div class="modal-sub">&#128667; ${vname}</div>
+    <p style="color:var(--text2);line-height:1.6;margin-bottom:20px">Confermi di aver riportato il mezzo in azienda adesso? L'orario verrà registrato nel log.</p>
+    <div class="btn-row">
+      <button class="btn" onclick="showBookingDetail(${id})">Indietro</button>
+      <button class="btn primary" onclick="doReturn(${id})">Sì, conferma riconsegna</button>
+    </div>`);
 }
 
 let _pendingCancelId = null;
@@ -1148,12 +1198,13 @@ function confirmReturn(id) {
 async function doReturn(id) {
   const me = myProfile();
   const nowIso = new Date().toISOString();
-  const { error } = await sb.from('vehicle_bookings').update({
+  const { error, data } = await sb.from('vehicle_bookings').update({
     actual_return_datetime: nowIso,
     returned_by_name: me?.name || currentUser?.email || '?',
     returned_by_email: me?.email || null,
-  }).eq('id', id);
-  if (error) { toast('Errore: '+error.message); return; }
+  }).eq('id', id).select();
+  if (error) { toast('Errore riconsegna: ' + (error.message || error.code || 'sconosciuto')); return; }
+  if (!data || !data.length) { toast('Riconsegna non salvata: permessi insufficienti sulla prenotazione'); return; }
   await loadBookings();
   closeModal();
   if (currentView==='cal')  renderCal();

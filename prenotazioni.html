@@ -124,6 +124,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue)}
 .field textarea{resize:vertical;min-height:48px}
 .frow{display:flex;gap:8px}.frow .field{flex:1}
+#bk-custom-range{flex-direction:column;gap:10px}
+#bk-custom-range input{width:100%}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
 .modal{background:var(--bg);border-radius:var(--radius-lg);border:0.5px solid var(--border2);width:380px;max-width:100%;padding:20px;max-height:90dvh;overflow-y:auto}
 .modal h2{font-size:15px;font-weight:600;margin-bottom:12px}
@@ -1002,7 +1004,10 @@ async function saveBooking() {
 async function showBookingDetail(id) {
   const { data: bk } = await sb.from('vehicle_bookings').select('*, vehicles(name,plate)').eq('id',id).single();
   if (!bk) return;
+  const me = myProfile();
   const canCancel = isGestore() || bk.booker_email===currentUser?.email;
+  const canReturn = !bk.actual_return_datetime &&
+    (isGestore() || (bk.booker_email ? bk.booker_email===currentUser?.email : bk.booker_name===me?.name));
   const er = effectiveRange(bk);
   const orarioTxt = er.start.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' → '+er.end.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const returnTxt = bk.actual_return_datetime
@@ -1020,9 +1025,20 @@ async function showBookingDetail(id) {
     (bk.notes ? '<div class="field"><label>Note</label><div style="padding:4px 0;font-size:12px">'+bk.notes+'</div></div>' : '') +
     '<div style="font-size:11px;color:var(--text3)">Inserita da '+bk.created_by+'</div>' +
     '<div class="btn-row">' +
+      (canReturn ? '<button class="btn primary" onclick="returnFromDetail('+id+',\''+(bk.vehicles?.name||'?').replace(/'/g,"&apos;")+'\')">&#128273; Riconsegna</button>' : '') +
       (canCancel ? '<button class="btn danger" onclick="cancelBooking('+id+')">Annulla prenotazione</button>' : '') +
       '<button class="btn" onclick="closeModal()">Chiudi</button>' +
     '</div>');
+}
+
+function returnFromDetail(id, vname) {
+  showModal(`<h2>Conferma riconsegna</h2>
+    <div class="modal-sub">&#128667; ${vname}</div>
+    <p style="color:var(--text2);line-height:1.6;margin-bottom:20px">Confermi di aver riportato il mezzo in azienda adesso? L'orario verrà registrato nel log.</p>
+    <div class="btn-row">
+      <button class="btn" onclick="showBookingDetail(${id})">Indietro</button>
+      <button class="btn primary" onclick="doReturn(${id})">Sì, conferma riconsegna</button>
+    </div>`);
 }
 
 let _pendingCancelId = null;
