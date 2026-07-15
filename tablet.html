@@ -935,7 +935,7 @@ async function openBookingModal(preVehicleId, preDate) {
     '</div>' +
     '<div id="bk-custom-range" class="frow" style="display:none">' +
       '<div class="field"><label>Inizio</label>' +
-        '<input id="bk-start" type="datetime-local" onchange="checkConflict()">' +
+        '<input id="bk-start" type="datetime-local" onchange="onStartChange()">' +
       '</div>' +
       '<div class="field"><label>Fine</label>' +
         '<input id="bk-end" type="datetime-local" onchange="checkConflict()">' +
@@ -953,6 +953,23 @@ async function openBookingModal(preVehicleId, preDate) {
       '<button class="btn" onclick="closeModal()">Annulla</button>' +
       '<button class="btn primary" id="bk-btn" onclick="saveBooking()">Prenota</button>' +
     '</div>');
+  checkConflict();
+}
+
+function onStartChange() {
+  const startEl = document.getElementById('bk-start');
+  const endEl   = document.getElementById('bk-end');
+  const startVal = startEl.value;
+  if (startVal) {
+    const newStart = new Date(startVal);
+    const curEnd = endEl.value ? new Date(endEl.value) : null;
+    // Se la fine non c'è o non è già almeno 1 ora dopo il nuovo inizio, la spostiamo noi
+    if (!curEnd || curEnd - newStart < 3600000) {
+      const newEnd = new Date(newStart.getTime() + 3600000);
+      const pad = n => String(n).padStart(2,'0');
+      endEl.value = newEnd.getFullYear()+'-'+pad(newEnd.getMonth()+1)+'-'+pad(newEnd.getDate())+'T'+pad(newEnd.getHours())+':'+pad(newEnd.getMinutes());
+    }
+  }
   checkConflict();
 }
 
