@@ -203,9 +203,11 @@ body { font-size: 16px; }
           <div style="grid-column:1/-1;font-size:12px;color:var(--text2)">Caricamento…</div>
         </div>
       </div>
-      <div class="field"><label>Email</label>
+      <div class="field" id="email-field-wrap">
+        <label>Email <span onclick="showEmailFieldManually()" style="font-size:11px;color:var(--text2);cursor:pointer;text-decoration:underline;font-weight:400">(non sei in lista? inseriscila a mano)</span></label>
         <input id="ls-email" type="email" placeholder="nome@azienda.it" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
+      <div id="email-selected-note" style="display:none;font-size:13px;color:var(--text2);margin:-4px 0 12px">✓ Utente selezionato</div>
       <div class="field"><label>Password</label>
         <input id="ls-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
@@ -444,7 +446,16 @@ function selectEmailTile(email, el) {
   el.classList.add('sel');
   document.getElementById('ls-email').value = email;
   document.getElementById('ls-err').textContent = '';
+  document.getElementById('email-field-wrap').style.display = 'none';
+  document.getElementById('email-selected-note').style.display = 'block';
   document.getElementById('ls-pass').focus();
+}
+
+function showEmailFieldManually() {
+  document.querySelectorAll('#email-name-tiles .pin-tile').forEach(t => t.classList.remove('sel'));
+  document.getElementById('ls-email').value = '';
+  document.getElementById('email-field-wrap').style.display = 'block';
+  document.getElementById('email-selected-note').style.display = 'none';
 }
 
 async function loadPinNames() {
@@ -566,6 +577,7 @@ async function onLoginPerson(person) {
   document.getElementById('kiosk-home').style.display = 'flex';
   await loadAll();
   startAutoRefresh();
+  resetIdleLogoutTimer();
 }
 
 // ── Navigazione kiosk: pulsantoni ↔ app completa ──
@@ -606,6 +618,27 @@ async function onLogin(user) {
     showForcePasswordModal(rd.name, rd.email);
   }
 }
+
+// ══════════════════════════════════════════════════
+//  AUTO-LOGOFF PER INATTIVITÀ (sicurezza tablet condiviso)
+// ══════════════════════════════════════════════════
+const IDLE_LOGOUT_MS = 3 * 60 * 1000; // 3 minuti — cambia qui se serve un altro valore
+let idleLogoutTimer = null;
+
+function resetIdleLogoutTimer() {
+  clearTimeout(idleLogoutTimer);
+  // Riparte solo se siamo effettivamente dentro l'app (loggati)
+  const inApp = document.getElementById('main-app').style.display !== 'none' ||
+                document.getElementById('kiosk-home').style.display !== 'none';
+  if (!inApp) return;
+  idleLogoutTimer = setTimeout(() => {
+    toast('Disconnesso per inattività');
+    setTimeout(() => doLogout(), 800);
+  }, IDLE_LOGOUT_MS);
+}
+['click','touchstart','keydown','mousemove'].forEach(evt =>
+  document.addEventListener(evt, resetIdleLogoutTimer, { passive:true })
+);
 
 function startAutoRefresh() {
   // Aggiorna ogni 60 secondi
