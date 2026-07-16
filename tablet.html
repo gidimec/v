@@ -203,11 +203,10 @@ body { font-size: 16px; }
           <div style="grid-column:1/-1;font-size:12px;color:var(--text2)">Caricamento…</div>
         </div>
       </div>
-      <div class="field" id="email-field-wrap">
-        <label>Email <span onclick="showEmailFieldManually()" style="font-size:11px;color:var(--text2);cursor:pointer;text-decoration:underline;font-weight:400">(non sei in lista? inseriscila a mano)</span></label>
+      <div class="field" id="email-field-wrap" style="display:none">
+        <label>Email</label>
         <input id="ls-email" type="email" placeholder="nome@azienda.it" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
-      <div id="email-selected-note" style="display:none;font-size:13px;color:var(--text2);margin:-4px 0 12px">✓ Utente selezionato</div>
       <div class="field"><label>Password</label>
         <input id="ls-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
@@ -429,7 +428,8 @@ async function loadEmailNames() {
   const wrap = document.getElementById('email-name-tiles');
   if (!wrap) return;
   if (!json.users || json.users.length === 0) {
-    wrap.innerHTML = '<div style="grid-column:1/-1;font-size:12px;color:var(--text2)">Nessun utente configurato</div>';
+    wrap.innerHTML = '<div style="grid-column:1/-1;font-size:12px;color:var(--text2)">Elenco non disponibile</div>';
+    document.getElementById('email-field-wrap').style.display = 'block';
     return;
   }
   wrap.innerHTML = json.users.map((p,i) => {
@@ -446,16 +446,7 @@ function selectEmailTile(email, el) {
   el.classList.add('sel');
   document.getElementById('ls-email').value = email;
   document.getElementById('ls-err').textContent = '';
-  document.getElementById('email-field-wrap').style.display = 'none';
-  document.getElementById('email-selected-note').style.display = 'block';
   document.getElementById('ls-pass').focus();
-}
-
-function showEmailFieldManually() {
-  document.querySelectorAll('#email-name-tiles .pin-tile').forEach(t => t.classList.remove('sel'));
-  document.getElementById('ls-email').value = '';
-  document.getElementById('email-field-wrap').style.display = 'block';
-  document.getElementById('email-selected-note').style.display = 'none';
 }
 
 async function loadPinNames() {
