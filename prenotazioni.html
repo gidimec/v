@@ -124,8 +124,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;background:va
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue)}
 .field textarea{resize:vertical;min-height:48px}
 .frow{display:flex;gap:8px}.frow .field{flex:1}
-#bk-custom-range{flex-direction:column;gap:10px}
-#bk-custom-range input{width:100%}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px}
 .modal{background:var(--bg);border-radius:var(--radius-lg);border:0.5px solid var(--border2);width:380px;max-width:100%;padding:20px;max-height:90dvh;overflow-y:auto}
 .modal h2{font-size:15px;font-weight:600;margin-bottom:12px}
@@ -878,12 +876,18 @@ async function openBookingModal(preVehicleId, preDate) {
         '</select>' +
       '</div>' +
     '</div>' +
-    '<div id="bk-custom-range" class="frow" style="display:none">' +
-      '<div class="field"><label>Inizio</label>' +
-        '<input id="bk-start" type="datetime-local" onchange="onStartChange()">' +
+    '<div id="bk-custom-range" style="display:none;flex-direction:column;gap:14px;margin-bottom:14px">' +
+      '<div><label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Inizio</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input id="bk-start-date" type="date" style="flex:1.4" onchange="onStartChange()">' +
+          '<input id="bk-start-time" type="time" style="flex:1" onchange="onStartChange()">' +
+        '</div>' +
       '</div>' +
-      '<div class="field"><label>Fine</label>' +
-        '<input id="bk-end" type="datetime-local" onchange="checkConflict()">' +
+      '<div><label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Fine</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input id="bk-end-date" type="date" style="flex:1.4" onchange="checkConflict()">' +
+          '<input id="bk-end-time" type="time" style="flex:1" onchange="checkConflict()">' +
+        '</div>' +
       '</div>' +
     '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin:-6px 0 10px" id="bk-overnight-hint"></div>' +
@@ -901,18 +905,25 @@ async function openBookingModal(preVehicleId, preDate) {
   checkConflict();
 }
 
+function combineDateTime(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return null;
+  return new Date(dateStr + 'T' + timeStr);
+}
+function padHM(n) { return String(n).padStart(2,'0'); }
+
 function onStartChange() {
-  const startEl = document.getElementById('bk-start');
-  const endEl   = document.getElementById('bk-end');
-  const startVal = startEl.value;
-  if (startVal) {
-    const newStart = new Date(startVal);
-    const curEnd = endEl.value ? new Date(endEl.value) : null;
+  const sDate = document.getElementById('bk-start-date').value;
+  const sTime = document.getElementById('bk-start-time').value;
+  const eDateEl = document.getElementById('bk-end-date');
+  const eTimeEl = document.getElementById('bk-end-time');
+  const newStart = combineDateTime(sDate, sTime);
+  if (newStart) {
+    const curEnd = combineDateTime(eDateEl.value, eTimeEl.value);
     // Se la fine non c'è o non è già almeno 1 ora dopo il nuovo inizio, la spostiamo noi
     if (!curEnd || curEnd - newStart < 3600000) {
       const newEnd = new Date(newStart.getTime() + 3600000);
-      const pad = n => String(n).padStart(2,'0');
-      endEl.value = newEnd.getFullYear()+'-'+pad(newEnd.getMonth()+1)+'-'+pad(newEnd.getDate())+'T'+pad(newEnd.getHours())+':'+pad(newEnd.getMinutes());
+      eDateEl.value = newEnd.getFullYear()+'-'+padHM(newEnd.getMonth()+1)+'-'+padHM(newEnd.getDate());
+      eTimeEl.value = padHM(newEnd.getHours())+':'+padHM(newEnd.getMinutes());
     }
   }
   checkConflict();
@@ -924,10 +935,14 @@ function onSlotChange() {
   wrap.style.display = slot==='custom' ? 'flex' : 'none';
   if (slot==='custom') {
     const date = document.getElementById('bk-date').value || fmt(new Date());
-    const startEl = document.getElementById('bk-start');
-    const endEl   = document.getElementById('bk-end');
-    if (!startEl.value) startEl.value = date+'T08:00';
-    if (!endEl.value)   endEl.value   = date+'T17:00';
+    const sDateEl = document.getElementById('bk-start-date');
+    const sTimeEl = document.getElementById('bk-start-time');
+    const eDateEl = document.getElementById('bk-end-date');
+    const eTimeEl = document.getElementById('bk-end-time');
+    if (!sDateEl.value) sDateEl.value = date;
+    if (!sTimeEl.value) sTimeEl.value = '08:00';
+    if (!eDateEl.value) eDateEl.value = date;
+    if (!eTimeEl.value) eTimeEl.value = '17:00';
   }
   checkConflict();
 }
@@ -936,10 +951,10 @@ function currentRangeFromForm() {
   const date  = document.getElementById('bk-date').value;
   const slot  = document.getElementById('bk-slot').value;
   if (slot==='custom') {
-    const s = document.getElementById('bk-start').value;
-    const e = document.getElementById('bk-end').value;
-    if (!s || !e) return null;
-    return { start: new Date(s), end: new Date(e), slot };
+    const start = combineDateTime(document.getElementById('bk-start-date').value, document.getElementById('bk-start-time').value);
+    const end   = combineDateTime(document.getElementById('bk-end-date').value, document.getElementById('bk-end-time').value);
+    if (!start || !end) return null;
+    return { start, end, slot };
   }
   const r = computeRange(date, slot);
   return { ...r, slot };
