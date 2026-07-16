@@ -829,8 +829,11 @@ async function renderList() {
     const canCancel = isGestore() || bk.booker_email===currentUser?.email;
     const er = effectiveRange(bk);
     const orarioTxt = er.start.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' → '+er.end.toLocaleString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    const now = new Date();
     const returnBadge = bk.actual_return_datetime
       ? '<span class="badge badge-green">Riconsegnato '+new Date(bk.actual_return_datetime).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'</span>'
+      : now < er.start ? '<span class="badge badge-blue">Prenotato</span>'
+      : now > er.end   ? '<span class="badge badge-red">In ritardo</span>'
       : '<span class="badge badge-yellow">In uso</span>';
     return '<div class="list-row">' +
       '<div class="avatar" style="background:'+c.bg+';color:'+c.text+'">'+(bk.booker_name||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase()+'</div>' +
