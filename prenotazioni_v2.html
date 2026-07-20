@@ -252,6 +252,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;backg
 
     <div id="view-vehicles" class="panel" style="display:none">
       <div class="section-head"><span class="section-title">Disponibilita mezzi oggi</span></div>
+      <div id="vehicles-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
       <div id="vehicles-body"></div>
     </div>
 
@@ -715,21 +716,43 @@ async function renderList() {
 function renderVehicles() {
   const today = fmt(new Date());
   const now = new Date();
-  document.getElementById('vehicles-body').innerHTML = vehicles.map(v => {
+  const rows = vehicles.map(v => {
     const stop = vehicleStops.find(s=>s.vehicle_id===v.id&&s.start_date<=today&&s.end_date>=today);
-    const todayBk = bookings.filter(b=>b.vehicle_id===v.id).filter(b=>{
+    const activeBk = bookings.filter(b=>b.vehicle_id===v.id).filter(b=>{
       const er = effectiveRange(b);
       return er.start <= now && er.end > now; // occupato adesso, in questo preciso istante
     });
-    let badge, badgeCls;
-    if (stop) { badge='&#128296; '+stop.reason; badgeCls='badge-red'; }
-    else if (todayBk.length>0) { badge='Occupato ora'; badgeCls='badge-red'; }
-    else { badge='Disponibile'; badgeCls='badge-green'; }
+    const overdueBk = activeBk.filter(b => effectiveRange(b).end < now && !b.actual_return_datetime);
+    let badge, badgeCls, sub, icon;
+    if (stop) { badge=stop.reason; badgeCls='badge-red'; icon='&#128295;'; sub='Non disponibile'; }
+    else if (overdueBk.length>0) { badge='In ritardo'; badgeCls='badge-red'; icon='&#128667;'; sub='Rientro previsto '+effectiveRange(overdueBk[0]).end.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}); }
+    else if (activeBk.length>0) { badge='In uso'; badgeCls='badge-yellow'; icon='&#128667;'; sub=(activeBk[0].booker_name||'?')+' &middot; fino alle '+effectiveRange(activeBk[0]).end.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}); }
+    else { badge='Disponibile'; badgeCls='badge-green'; icon='&#128667;'; sub=v.type+(v.brand?' &middot; '+v.brand:'')+(v.model?' '+v.model:''); }
+    return { v, badge, badgeCls, sub, icon, status: stop ? 'blocked' : overdueBk.length>0 ? 'overdue' : activeBk.length>0 ? 'inuse' : 'free' };
+  });
+
+  const counts = { free:0, inuse:0, overdue:0, blocked:0 };
+  rows.forEach(r => counts[r.status]++);
+  document.getElementById('vehicles-stats').innerHTML =
+    '<div style="background:var(--bg2);border-radius:var(--radius);padding:14px 16px">' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:4px">Disponibili</div>' +
+      '<div style="font-family:var(--font-display);font-size:24px;font-weight:600">'+counts.free+'</div>' +
+    '</div>' +
+    '<div style="background:var(--bg2);border-radius:var(--radius);padding:14px 16px">' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:4px">In uso ora</div>' +
+      '<div style="font-family:var(--font-display);font-size:24px;font-weight:600">'+counts.inuse+'</div>' +
+    '</div>' +
+    '<div style="background:var(--bg2);border-radius:var(--radius);padding:14px 16px">' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:4px">In ritardo</div>' +
+      '<div style="font-family:var(--font-display);font-size:24px;font-weight:600;color:'+(counts.overdue>0?'var(--red)':'var(--text)')+'">'+counts.overdue+'</div>' +
+    '</div>';
+
+  document.getElementById('vehicles-body').innerHTML = rows.map(({v,badge,badgeCls,sub,icon}) => {
     return '<div class="veh-card">' +
-      '<div style="font-size:26px">&#128667;</div>' +
+      '<div style="font-size:22px;color:var(--text2)">'+icon+'</div>' +
       '<div class="veh-card-info">' +
         '<div class="veh-card-name">'+v.name+' <span style="font-size:11px;font-weight:400;color:var(--text2)">'+v.plate+'</span></div>' +
-        '<div class="veh-card-sub">'+v.type+(v.brand?' &middot; '+v.brand:'')+(v.model?' '+v.model:'')+(v.km?' &middot; '+v.km.toLocaleString()+' km':'')+'</div>' +
+        '<div class="veh-card-sub">'+sub+'</div>' +
       '</div>' +
       '<div class="badge '+badgeCls+'">'+badge+'</div>' +
       (canBook() ? '<button class="btn primary" style="padding:5px 12px;font-size:11px" onclick="openBookingModal('+v.id+',null)">Prenota</button>' : '') +
